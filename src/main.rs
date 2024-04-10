@@ -1,5 +1,5 @@
 use clap::Parser;
-use gossiphs::create_cupido_graph;
+use gossiphs::graph::{Graph, GraphConfig};
 use tracing::info;
 
 #[derive(Parser, Debug)]
@@ -36,6 +36,5 @@ fn main() {
 fn handle_search(search_cmd: SearchCommand) {
     tracing_subscriber::fmt::init();
     info!(search_cmd.symbol_name);
-
-    create_cupido_graph();
+    Graph::from(GraphConfig::default());
 }

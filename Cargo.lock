@@ -257,8 +257,6 @@ dependencies = [
 [[package]]
 name = "cupido"
 version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b920302312ec9877bae592b96a9fbca8882079ddc4874d5b23660d89db2384b"
 dependencies = [
  "axum",
  "clap",
@@ -366,11 +364,15 @@ dependencies = [
 name = "gossiphs"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "clap",
  "cupido",
+ "petgraph",
  "serde_json",
  "tracing",
  "tracing-subscriber",
+ "tree-sitter",
+ "tree-sitter-rust",
 ]
 
 [[package]]
@@ -1118,6 +1120,26 @@ dependencies = [
  "thread_local",
  "tracing-core",
  "tracing-log",
+]
+
+[[package]]
+name = "tree-sitter"
+version = "0.22.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bdb9c9f15eae91dcd00ee0d86a281d16e6263786991b662b34fa9632c21a046b"
+dependencies = [
+ "cc",
+ "regex",
+]
+
+[[package]]
+name = "tree-sitter-rust"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47c6b38508e8d86647fb2c7174c3d2f5184f1a1537a17a24a64ff470f9ea40d8"
+dependencies = [
+ "cc",
+ "tree-sitter",
 ]
 
 [[package]]
