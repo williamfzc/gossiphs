@@ -63,7 +63,8 @@ impl Graph {
                 "rs" => {
                     let symbols = Extractor::RUST.extract(file_content);
                     let file_context = FileContext {
-                        path: file_path.clone(),
+                        // use the relative path as key
+                        path: each_file.clone(),
                         symbols,
                     };
                     file_contexts.push(file_context);
@@ -115,6 +116,10 @@ impl Graph {
                 symbol_graph.link_file_to_symbol(&file_context.path, global_id);
             }
         }
+        info!(
+            "symbol graph ready, nodes: {}",
+            symbol_graph.symbol_mapping.len()
+        );
         // 2
 
         return Graph {
@@ -251,7 +256,7 @@ impl SymbolGraph {
 #[cfg(test)]
 mod tests {
     use crate::graph::{Graph, GraphConfig};
-    use tracing::info;
+    use tracing::{debug, info};
 
     #[test]
     fn graph() {
@@ -260,11 +265,11 @@ mod tests {
         config.project_path = String::from("../stack-graphs");
         let g = Graph::from(config);
         g.file_contexts.iter().for_each(|context| {
-            info!("{}: {:?}", context.path, context.symbols);
+            debug!("{}: {:?}", context.path, context.symbols);
         });
 
-        let defs = g.symbol_graph.list_definitions(&String::from(
-            "../stack-graphs/languages/tree-sitter-stack-graphs-typescript/build.rs",
+        let defs = g.symbol_graph.list_symbols(&String::from(
+            "languages/tree-sitter-stack-graphs-typescript/build.rs",
         ));
         info!("defs: {:?}", defs);
     }
