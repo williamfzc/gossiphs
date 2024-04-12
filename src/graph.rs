@@ -4,8 +4,10 @@ use cupido::collector::config::Collect;
 use cupido::collector::config::{get_collector, Config};
 use cupido::relation::graph::RelationGraph;
 use petgraph::graph::{NodeIndex, UnGraph};
-use std::collections::HashMap;
+use petgraph::visit::EdgeRef;
+use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::ops::{Add, AddAssign};
 use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, info};
@@ -13,12 +15,6 @@ use tracing::{debug, info};
 pub struct FileContext {
     pub path: String,
     pub symbols: Vec<Symbol>,
-}
-
-impl FileContext {
-    pub fn global_symbol_id(&self, symbol: &Symbol) -> String {
-        return format!("{}{}", self.path, symbol.id());
-    }
 }
 
 pub struct Graph {
@@ -54,7 +50,7 @@ impl Graph {
             }
             match file_extension.as_str() {
                 "rs" => {
-                    let symbols = Extractor::Rust.extract(file_content);
+                    let symbols = Extractor::Rust.extract(each_file, file_content);
                     let file_context = FileContext {
                         // use the relative path as key
                         path: each_file.clone(),
@@ -63,7 +59,7 @@ impl Graph {
                     file_contexts.push(file_context);
                 }
                 "ts" | "tsx" => {
-                    let symbols = Extractor::TypeScript.extract(file_content);
+                    let symbols = Extractor::TypeScript.extract(each_file, file_content);
                     let file_context = FileContext {
                         // use the relative path as key
                         path: each_file.clone(),
@@ -156,26 +152,64 @@ impl Graph {
         for file_context in &final_file_contexts {
             symbol_graph.add_file(&file_context.path);
             for symbol in &file_context.symbols {
-                let global_id = &file_context.global_symbol_id(&symbol);
-                symbol_graph.add_symbol(global_id, symbol.clone());
-                symbol_graph.link_file_to_symbol(&file_context.path, global_id);
+                symbol_graph.add_symbol(symbol.clone());
+                symbol_graph.link_file_to_symbol(&file_context.path, symbol);
             }
         }
 
         // 2
         for file_context in &final_file_contexts {
             for symbol in &file_context.symbols {
-                if symbol.kind == SymbolKind::DEF {
+                if symbol.kind != SymbolKind::REF {
                     continue;
                 }
+                // find all the related definitions, and connect to them
                 let defs = global_symbol_table.get(&symbol.name).unwrap();
-                let global_symbol_id = &file_context.global_symbol_id(symbol);
                 for def in defs {
-                    let global_id = &file_context.global_symbol_id(def);
-                    symbol_graph.link_symbol_to_symbol(global_symbol_id, global_id);
+                    symbol_graph.link_symbol_to_symbol(def, symbol);
                 }
             }
         }
+
+        // 3
+        // commit cache
+        let mut cache: HashMap<String, HashSet<String>> = HashMap::new();
+        let mut related_commits = |f: String| -> HashSet<String> {
+            if let Some(ref_commits) = cache.get(&f) {
+                return ref_commits.clone();
+            } else {
+                let file_commits: HashSet<String> = relation_graph
+                    .file_related_commits(&f)
+                    .unwrap()
+                    .into_iter()
+                    .collect();
+
+                cache.insert(f.clone(), file_commits.clone());
+                return file_commits;
+            }
+        };
+
+        for file_context in &final_file_contexts {
+            let def_related_commits = related_commits(file_context.path.clone());
+            for symbol in &file_context.symbols {
+                if symbol.kind != SymbolKind::REF {
+                    continue;
+                }
+                let defs = global_symbol_table.get(&symbol.name).unwrap();
+                for def in defs {
+                    let f = def.file.clone();
+                    let ref_related_commits = related_commits(f);
+                    // calc the diff of two set
+                    let intersection: HashSet<String> = ref_related_commits
+                        .intersection(&def_related_commits)
+                        .cloned()
+                        .collect();
+                    let ratio = intersection.len();
+                    symbol_graph.enhance_symbol_to_symbol(&symbol.id(), &def.id(), ratio);
+                }
+            }
+        }
+
         info!(
             "symbol graph ready, nodes: {}, edges: {}",
             symbol_graph.symbol_mapping.len(),
@@ -211,26 +245,32 @@ impl GraphConfig {
     }
 }
 
+#[derive(Clone)]
 pub enum NodeType {
     File,
-    Symbol(Option<SymbolData>),
+    Symbol(SymbolData),
 }
 
-impl NodeType {
-    pub fn get_symbol_data(&self) -> Option<&SymbolData> {
-        if let NodeType::Symbol(Some(ref data)) = self {
-            return Some(data);
-        }
-        None
-    }
-}
 #[derive(Clone)]
 pub struct SymbolData {
     symbol: Symbol,
 }
 
+#[derive(Clone)]
 pub struct NodeData {
+    _id: Arc<String>,
     node_type: NodeType,
+}
+
+impl NodeData {
+    pub fn get_symbol(&self) -> Option<Symbol> {
+        match &self.node_type {
+            NodeType::Symbol(symbol_data) => {
+                return Some(symbol_data.symbol.clone());
+            }
+            _ => None,
+        }
+    }
 }
 
 pub struct SymbolGraph {
@@ -255,75 +295,112 @@ impl SymbolGraph {
         }
 
         let index = self.g.add_node(NodeData {
+            _id: id.clone(),
             node_type: NodeType::File,
         });
         self.file_mapping.entry(id).or_insert(index);
     }
 
-    pub fn add_symbol(&mut self, id: &String, symbol: Symbol) {
-        let id = Arc::new(id.clone());
+    pub fn add_symbol(&mut self, symbol: Symbol) {
+        let id = Arc::new(symbol.id());
         if self.symbol_mapping.contains_key(&id) {
             return;
         }
 
         let index = self.g.add_node(NodeData {
-            node_type: NodeType::Symbol(Some(SymbolData { symbol })),
+            _id: id.clone(),
+            node_type: NodeType::Symbol(SymbolData { symbol }),
         });
         self.symbol_mapping.entry(id).or_insert(index);
     }
 
-    pub fn link_file_to_symbol(&mut self, name: &String, symbol_id: &String) {
+    pub fn link_file_to_symbol(&mut self, name: &String, symbol: &Symbol) {
         if let (Some(file_index), Some(symbol_index)) = (
             self.file_mapping.get(name),
-            self.symbol_mapping.get(symbol_id),
+            self.symbol_mapping.get(&symbol.id()),
         ) {
+            if let Some(..) = self.g.find_edge(*file_index, *symbol_index) {
+                return;
+            }
             self.g.add_edge(*file_index, *symbol_index, 0);
         }
     }
 
-    pub fn link_symbol_to_symbol(&mut self, a: &String, b: &String) {
+    pub fn link_symbol_to_symbol(&mut self, a: &Symbol, b: &Symbol) {
+        if let (Some(a_index), Some(b_index)) = (
+            self.symbol_mapping.get(&a.id()),
+            self.symbol_mapping.get(&b.id()),
+        ) {
+            if let Some(..) = self.g.find_edge(*a_index, *b_index) {
+                return;
+            }
+            self.g.add_edge(*a_index, *b_index, 0);
+        }
+    }
+
+    pub fn enhance_symbol_to_symbol(&mut self, a: &String, b: &String, ratio: usize) {
         if let (Some(a_index), Some(b_index)) =
             (self.symbol_mapping.get(a), self.symbol_mapping.get(b))
         {
-            self.g.add_edge(*a_index, *b_index, 0);
+            let edge = self.g.find_edge(*a_index, *b_index).unwrap();
+            if let Some(weight) = self.g.edge_weight_mut(edge) {
+                *weight += ratio;
+            }
         }
     }
 }
 
 // Read API
 impl SymbolGraph {
-    pub fn list_symbols(&self, file_name: &String) -> Vec<Symbol> {
-        if !self.file_mapping.contains_key(file_name) {
-            return Vec::new();
-        }
-
-        let file_data = self.file_mapping.get(file_name).unwrap();
-        let ids = self
+    fn neighbor_symbols(&self, idx: NodeIndex) -> HashMap<Symbol, usize> {
+        return self
             .g
-            .neighbors(*file_data)
-            .map(|each| {
-                return self.g[each]
-                    .node_type
-                    .get_symbol_data()
-                    .unwrap()
-                    .symbol
-                    .clone();
+            .edges(idx)
+            .filter_map(|edge| {
+                let target_idx = edge.target();
+                let weight = *edge.weight();
+                return if let (Some(symbol)) = self.g[target_idx].get_symbol() {
+                    Some((symbol.clone(), weight))
+                } else {
+                    // not a symbol node
+                    None
+                };
             })
             .collect();
-        return ids;
     }
 
-    pub fn list_definitions(&self, file_name: &String) -> Vec<Symbol> {
-        self.list_symbols(file_name)
+    pub fn list_symbols(&self, file_name: &String) -> HashMap<Symbol, usize> {
+        if !self.file_mapping.contains_key(file_name) {
+            return HashMap::new();
+        }
+
+        let file_index = self.file_mapping.get(file_name).unwrap();
+        return self.neighbor_symbols(*file_index);
+    }
+
+    pub fn list_definitions(&self, file_name: &String) -> HashMap<Symbol, usize> {
+        return self
+            .list_symbols(file_name)
             .into_iter()
-            .filter(|symbol| symbol.kind == SymbolKind::DEF)
-            .collect()
+            .filter(|(symbol, _)| symbol.kind == SymbolKind::DEF)
+            .collect();
+    }
+
+    pub fn list_references_by_definition(&self, symbol_id: &String) -> HashMap<Symbol, usize> {
+        if !self.symbol_mapping.contains_key(symbol_id) {
+            return HashMap::new();
+        }
+
+        let def_index = self.symbol_mapping.get(symbol_id).unwrap();
+        return self.neighbor_symbols(*def_index);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::graph::{Graph, GraphConfig};
+    use crate::symbol::SymbolKind;
+    use petgraph::visit::{EdgeRef, IntoEdgeReferences};
     use tracing::{debug, info};
 
     #[test]
@@ -336,16 +413,32 @@ mod tests {
             debug!("{}: {:?}", context.path, context.symbols);
         });
 
+        // "stack-graphs/src/stitching.rs2505"
+        g.symbol_graph.g.edge_references().for_each(|each| {
+            if *each.weight() > 0 {
+                debug!(
+                    "{:?} {:?} -- {:?} {:?}, {}",
+                    g.symbol_graph.g[each.source()]._id,
+                    g.symbol_graph.g[each.source()].get_symbol().unwrap().kind,
+                    g.symbol_graph.g[each.target()]._id,
+                    g.symbol_graph.g[each.target()].get_symbol().unwrap().kind,
+                    each.weight()
+                )
+            }
+        });
+
         g.symbol_graph
-            .list_symbols(&String::from(
-                "languages/tree-sitter-stack-graphs-typescript/build.rs",
+            .list_definitions(&String::from(
+                "tree-sitter-stack-graphs/src/cli/util/reporter.rs",
             ))
             .iter()
-            .for_each(|each| {
-                info!(
-                    "{:?} {}: {}:{}",
-                    each.kind, each.name, each.range.start_point.row, each.range.start_point.column
-                )
+            .for_each(|(each, _)| {
+                g.symbol_graph
+                    .list_references_by_definition(&each.id())
+                    .iter()
+                    .for_each(|(each_ref, weight)| {
+                        debug!("{} ref in {}, weight {}", each.file, each_ref.file, weight);
+                    });
             });
     }
 
@@ -360,13 +453,11 @@ mod tests {
         });
 
         g.symbol_graph
-            .list_symbols(&String::from(
-                "languages/tree-sitter-stack-graphs-typescript/build.rs",
-            ))
+            .list_symbols(&String::from("lsif/src/main.ts"))
             .iter()
-            .for_each(|each| {
-                info!(
-                    "{:?} {}: {}:{}",
+            .for_each(|(each, weight)| {
+                debug!(
+                    "{weight} {:?} {}: {}:{}",
                     each.kind, each.name, each.range.start_point.row, each.range.start_point.column
                 )
             });

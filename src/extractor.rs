@@ -9,20 +9,20 @@ pub enum Extractor {
 }
 
 impl Extractor {
-    pub fn extract(&self, s: &String) -> Vec<Symbol> {
+    pub fn extract(&self, f: &String, s: &String) -> Vec<Symbol> {
         return match self {
             Extractor::Rust => {
                 let lang = &tree_sitter_rust::language();
-                self._extract(s, lang)
+                self._extract(f, s, lang)
             }
             Extractor::TypeScript => {
                 let lang = &tree_sitter_typescript::language_typescript();
-                self._extract(s, lang)
+                self._extract(f, s, lang)
             }
-        }
+        };
     }
 
-    fn _extract(&self, s: &String, language: &Language) -> Vec<Symbol> {
+    fn _extract(&self, f: &String, s: &String, language: &Language) -> Vec<Symbol> {
         let mut parser = Parser::new();
         parser
             .set_language(*language)
@@ -44,7 +44,7 @@ impl Extractor {
 
                 if let Ok(str_slice) = matched_node.utf8_text(s.as_bytes()) {
                     let string = str_slice.to_string();
-                    let def_node = Symbol::new_def(string, range);
+                    let def_node = Symbol::new_def(f.clone(), string, range);
                     taken.insert(def_node.id(), ());
                     ret.push(def_node);
                 }
@@ -62,7 +62,7 @@ impl Extractor {
 
                 if let Ok(str_slice) = matched_node.utf8_text(s.as_bytes()) {
                     let string = str_slice.to_string();
-                    let ref_node = Symbol::new_ref(string, range);
+                    let ref_node = Symbol::new_ref(f.clone(), string, range);
                     if taken.contains_key(&ref_node.id()) {
                         continue;
                     }
@@ -83,8 +83,10 @@ mod tests {
     #[test]
     fn extract_rust() {
         tracing_subscriber::fmt::init();
-        let symbols = Extractor::Rust.extract(&String::from(
-            r#"
+        let symbols = Extractor::Rust.extract(
+            &String::from("abc"),
+            &String::from(
+                r#"
 pub enum Extractor {
     RUST,
 }
@@ -113,7 +115,8 @@ impl Extractor {
     }
 }
 "#,
-        ));
+            ),
+        );
         symbols.iter().for_each(|each| {
             info!("symbol: {:?}", each);
         })
@@ -122,8 +125,10 @@ impl Extractor {
     #[test]
     fn extract_typescript() {
         tracing_subscriber::fmt::init();
-        let symbols = Extractor::TypeScript.extract(&String::from(
-            r#"
+        let symbols = Extractor::TypeScript.extract(
+            &String::from("abc"),
+            &String::from(
+                r#"
 import { store } from 'docx-deps';
 
 import { toggleShowCommentNumbers } from '$common/redux/actions';
@@ -161,7 +166,9 @@ class NumbersManager {
 }
 
 export default NumbersManager;
-            ""#));
+            ""#,
+            ),
+        );
         symbols.iter().for_each(|each| {
             info!("symbol: {:?}", each);
         })
