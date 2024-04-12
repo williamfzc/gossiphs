@@ -1,4 +1,5 @@
-use crate::extractor::{Extractor, Symbol, SymbolKind};
+use crate::extractor::Extractor;
+use crate::symbol::{Symbol, SymbolKind};
 use cupido::collector::config::Collect;
 use cupido::collector::config::{get_collector, Config};
 use cupido::relation::graph::RelationGraph;
@@ -27,19 +28,11 @@ pub struct Graph {
 }
 
 impl Graph {
-    pub fn from(conf: GraphConfig) -> Graph {
-        // 1. call cupido
-        // 2. extract symbols
-        // 3. building def and ref relations
-        let relation_graph = create_cupido_graph(&conf.project_path);
-        let size = relation_graph.size();
-        info!("size: {:?}", size);
-
-        let files = relation_graph.files();
+    fn extract_file_contexts(root: &String, files: Vec<String>) -> Vec<FileContext> {
         let mut file_contexts: Vec<FileContext> = Vec::new();
 
         for each_file in &files {
-            let file_path = &Path::new(&conf.project_path)
+            let file_path = &Path::new(&root)
                 .join(each_file)
                 .to_string_lossy()
                 .into_owned();
@@ -61,7 +54,7 @@ impl Graph {
             }
             match file_extension.as_str() {
                 "rs" => {
-                    let symbols = Extractor::RUST.extract(file_content);
+                    let symbols = Extractor::Rust.extract(file_content);
                     let file_context = FileContext {
                         // use the relative path as key
                         path: each_file.clone(),
@@ -69,27 +62,79 @@ impl Graph {
                     };
                     file_contexts.push(file_context);
                 }
-                _ => {
-                    debug!("No extractor found for '{}' files", file_extension);
+                "ts" | "tsx" => {
+                    let symbols = Extractor::TypeScript.extract(file_content);
+                    let file_context = FileContext {
+                        // use the relative path as key
+                        path: each_file.clone(),
+                        symbols,
+                    };
+                    file_contexts.push(file_context);
                 }
+                _ => {}
             }
         }
         // extract ok
-        info!("symbol extract finished: {}", file_contexts.len());
+        info!("symbol extract finished, files: {}", file_contexts.len());
+        return file_contexts;
+    }
+
+    fn build_global_symbol_table(file_contexts: &[FileContext]) -> HashMap<String, Vec<Symbol>> {
+        let mut global_symbol_table: HashMap<String, Vec<Symbol>> = HashMap::new();
+
+        file_contexts
+            .iter()
+            .flat_map(|file_context| file_context.symbols.iter())
+            .filter(|symbol| symbol.kind == SymbolKind::DEF)
+            .for_each(|symbol| {
+                global_symbol_table
+                    .entry(symbol.name.clone())
+                    .or_insert_with(Vec::new)
+                    .push(symbol.clone());
+            });
+
+        global_symbol_table
+    }
+
+    fn filter_pointless_symbols(
+        file_contexts: &Vec<FileContext>,
+        global_symbol_table: &HashMap<String, Vec<Symbol>>,
+    ) -> Vec<FileContext> {
+        let mut filtered_file_contexts = Vec::new();
+        for file_context in file_contexts {
+            let filtered_symbols = file_context
+                .symbols
+                .iter()
+                .filter(|symbol| global_symbol_table.contains_key(&symbol.name))
+                .map(|symbol| symbol.clone())
+                .collect();
+
+            filtered_file_contexts.push(FileContext {
+                path: file_context.path.clone(),
+                symbols: filtered_symbols,
+            });
+        }
+        filtered_file_contexts
+    }
+
+    pub fn from(conf: GraphConfig) -> Graph {
+        // 1. call cupido
+        // 2. extract symbols
+        // 3. building def and ref relations
+        let relation_graph = create_cupido_graph(&conf.project_path);
+        let size = relation_graph.size();
+        debug!("relation graph size: {:?}", size);
+
+        let files = relation_graph.files();
+        let file_contexts = Self::extract_file_contexts(&conf.project_path, files);
 
         // filter pointless REF
-        let mut global_symbol_table: HashMap<String, Vec<&Symbol>> = file_contexts
-            .iter_mut()
-            .flat_map(|file_context| &mut file_context.symbols)
-            .filter(|symbol| symbol.kind == SymbolKind::DEF)
-            .map(|symbol| (symbol.name.clone(), Vec::new()))
-            .collect();
+        let mut global_symbol_table: HashMap<String, Vec<Symbol>> =
+            Self::build_global_symbol_table(&file_contexts);
+        let final_file_contexts =
+            Self::filter_pointless_symbols(&file_contexts, &global_symbol_table);
 
-        for file_context in &mut file_contexts {
-            file_context
-                .symbols
-                .retain(|symbol| global_symbol_table.contains_key(&symbol.name));
-
+        for file_context in &final_file_contexts {
             // and collect all the definitions
             // k is name, v is location
             file_context
@@ -98,7 +143,7 @@ impl Graph {
                 .filter(|symbol| symbol.kind == SymbolKind::DEF)
                 .for_each(|symbol| {
                     if let Some(v) = global_symbol_table.get_mut(&symbol.name) {
-                        v.push(&symbol);
+                        v.push(symbol.clone());
                     }
                 });
         }
@@ -108,7 +153,7 @@ impl Graph {
         // 2. connect defs and refs
         // 3. priority recalculation
         let mut symbol_graph = SymbolGraph::new();
-        for file_context in &file_contexts {
+        for file_context in &final_file_contexts {
             symbol_graph.add_file(&file_context.path);
             for symbol in &file_context.symbols {
                 let global_id = &file_context.global_symbol_id(&symbol);
@@ -116,11 +161,26 @@ impl Graph {
                 symbol_graph.link_file_to_symbol(&file_context.path, global_id);
             }
         }
-        info!(
-            "symbol graph ready, nodes: {}",
-            symbol_graph.symbol_mapping.len()
-        );
+
         // 2
+        for file_context in &final_file_contexts {
+            for symbol in &file_context.symbols {
+                if symbol.kind == SymbolKind::DEF {
+                    continue;
+                }
+                let defs = global_symbol_table.get(&symbol.name).unwrap();
+                let global_symbol_id = &file_context.global_symbol_id(symbol);
+                for def in defs {
+                    let global_id = &file_context.global_symbol_id(def);
+                    symbol_graph.link_symbol_to_symbol(global_symbol_id, global_id);
+                }
+            }
+        }
+        info!(
+            "symbol graph ready, nodes: {}, edges: {}",
+            symbol_graph.symbol_mapping.len(),
+            symbol_graph.g.edge_count(),
+        );
 
         return Graph {
             file_contexts,
@@ -213,11 +273,19 @@ impl SymbolGraph {
     }
 
     pub fn link_file_to_symbol(&mut self, name: &String, symbol_id: &String) {
-        if let (Some(file_data), Some(symbol_data)) = (
+        if let (Some(file_index), Some(symbol_index)) = (
             self.file_mapping.get(name),
             self.symbol_mapping.get(symbol_id),
         ) {
-            self.g.add_edge(*file_data, *symbol_data, 0);
+            self.g.add_edge(*file_index, *symbol_index, 0);
+        }
+    }
+
+    pub fn link_symbol_to_symbol(&mut self, a: &String, b: &String) {
+        if let (Some(a_index), Some(b_index)) =
+            (self.symbol_mapping.get(a), self.symbol_mapping.get(b))
+        {
+            self.g.add_edge(*a_index, *b_index, 0);
         }
     }
 }
@@ -259,7 +327,7 @@ mod tests {
     use tracing::{debug, info};
 
     #[test]
-    fn graph() {
+    fn rust_graph() {
         tracing_subscriber::fmt::init();
         let mut config = GraphConfig::default();
         config.project_path = String::from("../stack-graphs");
@@ -268,9 +336,39 @@ mod tests {
             debug!("{}: {:?}", context.path, context.symbols);
         });
 
-        let defs = g.symbol_graph.list_symbols(&String::from(
-            "languages/tree-sitter-stack-graphs-typescript/build.rs",
-        ));
-        info!("defs: {:?}", defs);
+        g.symbol_graph
+            .list_symbols(&String::from(
+                "languages/tree-sitter-stack-graphs-typescript/build.rs",
+            ))
+            .iter()
+            .for_each(|each| {
+                info!(
+                    "{:?} {}: {}:{}",
+                    each.kind, each.name, each.range.start_point.row, each.range.start_point.column
+                )
+            });
+    }
+
+    #[test]
+    fn ts_graph() {
+        tracing_subscriber::fmt::init();
+        let mut config = GraphConfig::default();
+        config.project_path = String::from("../lsif-node");
+        let g = Graph::from(config);
+        g.file_contexts.iter().for_each(|context| {
+            debug!("{}: {:?}", context.path, context.symbols);
+        });
+
+        g.symbol_graph
+            .list_symbols(&String::from(
+                "languages/tree-sitter-stack-graphs-typescript/build.rs",
+            ))
+            .iter()
+            .for_each(|each| {
+                info!(
+                    "{:?} {}: {}:{}",
+                    each.kind, each.name, each.range.start_point.row, each.range.start_point.column
+                )
+            });
     }
 }
