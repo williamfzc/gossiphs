@@ -15,26 +15,38 @@ struct Cli {
 
 #[derive(Parser, Debug)]
 enum SubCommand {
-    #[clap(name = "search")]
-    Search(SearchCommand),
+    #[clap(name = "relate")]
+    Relate(RelateCommand),
 }
 
 #[derive(Parser, Debug)]
-struct SearchCommand {
+struct RelateCommand {
     #[clap(long)]
-    symbol_name: String,
+    file: String,
 }
 
 fn main() {
     let cli: Cli = Cli::parse();
 
     match cli.cmd {
-        SubCommand::Search(search_cmd) => handle_search(search_cmd),
+        SubCommand::Relate(search_cmd) => handle_relate(search_cmd),
     }
 }
 
-fn handle_search(search_cmd: SearchCommand) {
+fn handle_relate(relate_cmd: RelateCommand) {
     tracing_subscriber::fmt::init();
-    info!(search_cmd.symbol_name);
-    Graph::from(GraphConfig::default());
+    info!(relate_cmd.file);
+    let g = Graph::from(GraphConfig::default());
+    let files = g.related_files(&relate_cmd.file);
+    // convert to JSON and print to stdout
+    let json = serde_json::to_string_pretty(&files).unwrap();
+    println!("{}", json);
+}
+
+#[test]
+fn test_handle_relate() {
+    let relate_cmd = RelateCommand {
+        file: "src/extractor.rs".to_string(),
+    };
+    handle_relate(relate_cmd);
 }

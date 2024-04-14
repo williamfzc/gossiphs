@@ -1,15 +1,11 @@
 use crate::extractor::Extractor;
-use crate::symbol::{Symbol, SymbolKind};
+use crate::symbol::{Symbol, SymbolGraph, SymbolKind};
 use cupido::collector::config::Collect;
 use cupido::collector::config::{get_collector, Config};
 use cupido::relation::graph::RelationGraph;
-use petgraph::graph::{NodeIndex, UnGraph};
-use petgraph::visit::EdgeRef;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::ops::{Add, AddAssign};
 use std::path::Path;
-use std::sync::Arc;
 use tracing::{debug, info};
 
 pub struct FileContext {
@@ -224,6 +220,47 @@ impl Graph {
     }
 }
 
+// Read API
+impl Graph {
+    pub fn files(&self) -> HashSet<String> {
+        return self
+            .file_contexts
+            .iter()
+            .map(|each| each.path.clone())
+            .collect();
+    }
+
+    pub fn file_exists(&self, file_name: &String) -> bool {
+        return self.files().contains(file_name);
+    }
+
+    pub fn related_files(&self, file_name: &String) -> HashMap<String, usize> {
+        if !self.file_exists(file_name) {
+            return HashMap::new();
+        }
+
+        // find all the defs in this file
+        // and tracking all the references and theirs
+        let mut file_counter = HashMap::new();
+        self.symbol_graph
+            .list_definitions(file_name)
+            .iter()
+            .for_each(|(def, _)| {
+                self.symbol_graph
+                    .list_references_by_definition(&def.id())
+                    .iter()
+                    .for_each(|(each_ref, weight)| {
+                        file_counter.entry(each_ref.file.clone()).or_insert(0);
+                        file_counter
+                            .entry(each_ref.file.clone())
+                            .and_modify(|w| *w += *weight)
+                            .or_insert(*weight);
+                    });
+            });
+        return file_counter;
+    }
+}
+
 fn create_cupido_graph(project_path: &String) -> RelationGraph {
     let mut conf = Config::default();
     conf.repo_path = project_path.parse().unwrap();
@@ -245,166 +282,14 @@ impl GraphConfig {
     }
 }
 
-#[derive(Clone)]
-pub enum NodeType {
-    File,
-    Symbol(SymbolData),
-}
-
-#[derive(Clone)]
-pub struct SymbolData {
-    symbol: Symbol,
-}
-
-#[derive(Clone)]
-pub struct NodeData {
-    _id: Arc<String>,
-    node_type: NodeType,
-}
-
-impl NodeData {
-    pub fn get_symbol(&self) -> Option<Symbol> {
-        match &self.node_type {
-            NodeType::Symbol(symbol_data) => {
-                return Some(symbol_data.symbol.clone());
-            }
-            _ => None,
-        }
-    }
-}
-
-pub struct SymbolGraph {
-    file_mapping: HashMap<Arc<String>, NodeIndex>,
-    symbol_mapping: HashMap<Arc<String>, NodeIndex>,
-    g: UnGraph<NodeData, usize>,
-}
-
-impl SymbolGraph {
-    pub fn new() -> SymbolGraph {
-        return SymbolGraph {
-            file_mapping: HashMap::new(),
-            symbol_mapping: HashMap::new(),
-            g: UnGraph::<NodeData, usize>::new_undirected(),
-        };
-    }
-
-    pub fn add_file(&mut self, name: &String) {
-        let id = Arc::new(name.clone());
-        if self.file_mapping.contains_key(&id) {
-            return;
-        }
-
-        let index = self.g.add_node(NodeData {
-            _id: id.clone(),
-            node_type: NodeType::File,
-        });
-        self.file_mapping.entry(id).or_insert(index);
-    }
-
-    pub fn add_symbol(&mut self, symbol: Symbol) {
-        let id = Arc::new(symbol.id());
-        if self.symbol_mapping.contains_key(&id) {
-            return;
-        }
-
-        let index = self.g.add_node(NodeData {
-            _id: id.clone(),
-            node_type: NodeType::Symbol(SymbolData { symbol }),
-        });
-        self.symbol_mapping.entry(id).or_insert(index);
-    }
-
-    pub fn link_file_to_symbol(&mut self, name: &String, symbol: &Symbol) {
-        if let (Some(file_index), Some(symbol_index)) = (
-            self.file_mapping.get(name),
-            self.symbol_mapping.get(&symbol.id()),
-        ) {
-            if let Some(..) = self.g.find_edge(*file_index, *symbol_index) {
-                return;
-            }
-            self.g.add_edge(*file_index, *symbol_index, 0);
-        }
-    }
-
-    pub fn link_symbol_to_symbol(&mut self, a: &Symbol, b: &Symbol) {
-        if let (Some(a_index), Some(b_index)) = (
-            self.symbol_mapping.get(&a.id()),
-            self.symbol_mapping.get(&b.id()),
-        ) {
-            if let Some(..) = self.g.find_edge(*a_index, *b_index) {
-                return;
-            }
-            self.g.add_edge(*a_index, *b_index, 0);
-        }
-    }
-
-    pub fn enhance_symbol_to_symbol(&mut self, a: &String, b: &String, ratio: usize) {
-        if let (Some(a_index), Some(b_index)) =
-            (self.symbol_mapping.get(a), self.symbol_mapping.get(b))
-        {
-            let edge = self.g.find_edge(*a_index, *b_index).unwrap();
-            if let Some(weight) = self.g.edge_weight_mut(edge) {
-                *weight += ratio;
-            }
-        }
-    }
-}
-
-// Read API
-impl SymbolGraph {
-    fn neighbor_symbols(&self, idx: NodeIndex) -> HashMap<Symbol, usize> {
-        return self
-            .g
-            .edges(idx)
-            .filter_map(|edge| {
-                let target_idx = edge.target();
-                let weight = *edge.weight();
-                return if let (Some(symbol)) = self.g[target_idx].get_symbol() {
-                    Some((symbol.clone(), weight))
-                } else {
-                    // not a symbol node
-                    None
-                };
-            })
-            .collect();
-    }
-
-    pub fn list_symbols(&self, file_name: &String) -> HashMap<Symbol, usize> {
-        if !self.file_mapping.contains_key(file_name) {
-            return HashMap::new();
-        }
-
-        let file_index = self.file_mapping.get(file_name).unwrap();
-        return self.neighbor_symbols(*file_index);
-    }
-
-    pub fn list_definitions(&self, file_name: &String) -> HashMap<Symbol, usize> {
-        return self
-            .list_symbols(file_name)
-            .into_iter()
-            .filter(|(symbol, _)| symbol.kind == SymbolKind::DEF)
-            .collect();
-    }
-
-    pub fn list_references_by_definition(&self, symbol_id: &String) -> HashMap<Symbol, usize> {
-        if !self.symbol_mapping.contains_key(symbol_id) {
-            return HashMap::new();
-        }
-
-        let def_index = self.symbol_mapping.get(symbol_id).unwrap();
-        return self.neighbor_symbols(*def_index);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::graph::{Graph, GraphConfig};
-    use crate::symbol::SymbolKind;
-    use petgraph::visit::{EdgeRef, IntoEdgeReferences};
+    use petgraph::visit::EdgeRef;
     use tracing::{debug, info};
 
     #[test]
-    fn rust_graph() {
+    fn symbol_graph_rust() {
         tracing_subscriber::fmt::init();
         let mut config = GraphConfig::default();
         config.project_path = String::from("../stack-graphs");
@@ -443,7 +328,7 @@ mod tests {
     }
 
     #[test]
-    fn ts_graph() {
+    fn symbol_graph_ts() {
         tracing_subscriber::fmt::init();
         let mut config = GraphConfig::default();
         config.project_path = String::from("../lsif-node");
@@ -461,5 +346,19 @@ mod tests {
                     each.kind, each.name, each.range.start_point.row, each.range.start_point.column
                 )
             });
+    }
+
+    #[test]
+    fn graph_api() {
+        tracing_subscriber::fmt::init();
+        let mut config = GraphConfig::default();
+        config.project_path = String::from("../stack-graphs");
+        let g = Graph::from(config);
+        let files = g.related_files(&String::from(
+            "tree-sitter-stack-graphs/src/cli/util/reporter.rs",
+        ));
+        files.iter().for_each(|(file, count)| {
+            info!("{}: {}", file, count);
+        });
     }
 }
