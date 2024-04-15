@@ -1,6 +1,5 @@
 use clap::Parser;
 use gossiphs::graph::{Graph, GraphConfig};
-use tracing::info;
 
 #[derive(Parser, Debug)]
 #[clap(
@@ -22,6 +21,9 @@ enum SubCommand {
 #[derive(Parser, Debug)]
 struct RelateCommand {
     #[clap(long)]
+    project_path: String,
+
+    #[clap(long)]
     file: String,
 }
 
@@ -34,9 +36,9 @@ fn main() {
 }
 
 fn handle_relate(relate_cmd: RelateCommand) {
-    tracing_subscriber::fmt::init();
-    info!(relate_cmd.file);
-    let g = Graph::from(GraphConfig::default());
+    let mut config = GraphConfig::default();
+    config.project_path = relate_cmd.project_path;
+    let g = Graph::from(config);
     let files = g.related_files(&relate_cmd.file);
     // convert to JSON and print to stdout
     let json = serde_json::to_string_pretty(&files).unwrap();
@@ -46,6 +48,7 @@ fn handle_relate(relate_cmd: RelateCommand) {
 #[test]
 fn test_handle_relate() {
     let relate_cmd = RelateCommand {
+        project_path: String::from("."),
         file: "src/extractor.rs".to_string(),
     };
     handle_relate(relate_cmd);

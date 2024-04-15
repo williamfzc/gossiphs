@@ -3,6 +3,7 @@ use crate::symbol::{Symbol, SymbolGraph, SymbolKind};
 use cupido::collector::config::Collect;
 use cupido::collector::config::{get_collector, Config};
 use cupido::relation::graph::RelationGraph;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
@@ -234,9 +235,9 @@ impl Graph {
         return self.files().contains(file_name);
     }
 
-    pub fn related_files(&self, file_name: &String) -> HashMap<String, usize> {
+    pub fn related_files(&self, file_name: &String) -> Vec<RelatedFileContext> {
         if !self.file_exists(file_name) {
-            return HashMap::new();
+            return Vec::new();
         }
 
         // find all the defs in this file
@@ -257,8 +258,43 @@ impl Graph {
                             .or_insert(*weight);
                     });
             });
-        return file_counter;
+        self.symbol_graph
+            .list_references(file_name)
+            .iter()
+            .for_each(|(each_ref, _)| {
+                let defs = self
+                    .symbol_graph
+                    .list_definitions_by_reference(&each_ref.id());
+
+                defs.iter().for_each(|(each_def, weight)| {
+                    file_counter.entry(each_def.file.clone()).or_insert(0);
+                    file_counter
+                        .entry(each_def.file.clone())
+                        .and_modify(|w| *w += *weight)
+                        .or_insert(*weight);
+                })
+            });
+        file_counter.remove(file_name);
+        return file_counter
+            .iter()
+            .map(|(k, v)| {
+                return RelatedFileContext {
+                    name: k.clone(),
+                    score: *v,
+                    def_units: self.symbol_graph.list_definitions(k).len(),
+                    ref_units: self.symbol_graph.list_references(k).len(),
+                };
+            })
+            .collect::<Vec<_>>();
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct RelatedFileContext {
+    pub name: String,
+    pub score: usize,
+    pub def_units: usize,
+    pub ref_units: usize,
 }
 
 fn create_cupido_graph(project_path: &String) -> RelationGraph {
@@ -271,7 +307,7 @@ fn create_cupido_graph(project_path: &String) -> RelationGraph {
 }
 
 pub struct GraphConfig {
-    project_path: String,
+    pub project_path: String,
 }
 
 impl GraphConfig {
@@ -357,8 +393,8 @@ mod tests {
         let files = g.related_files(&String::from(
             "tree-sitter-stack-graphs/src/cli/util/reporter.rs",
         ));
-        files.iter().for_each(|(file, count)| {
-            info!("{}: {}", file, count);
+        files.iter().for_each(|item| {
+            info!("{}: {}", item.name, item.score);
         });
     }
 }

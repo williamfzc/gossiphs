@@ -370,6 +370,7 @@ dependencies = [
  "clap",
  "cupido",
  "petgraph",
+ "serde",
  "serde_json",
  "tracing",
  "tracing-subscriber",

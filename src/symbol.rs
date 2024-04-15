@@ -92,7 +92,7 @@ impl SymbolGraph {
         };
     }
 
-    pub fn add_file(&mut self, name: &String) {
+    pub(crate) fn add_file(&mut self, name: &String) {
         let id = Arc::new(name.clone());
         if self.file_mapping.contains_key(&id) {
             return;
@@ -105,7 +105,7 @@ impl SymbolGraph {
         self.file_mapping.entry(id).or_insert(index);
     }
 
-    pub fn add_symbol(&mut self, symbol: Symbol) {
+    pub(crate) fn add_symbol(&mut self, symbol: Symbol) {
         let id = Arc::new(symbol.id());
         if self.symbol_mapping.contains_key(&id) {
             return;
@@ -118,7 +118,7 @@ impl SymbolGraph {
         self.symbol_mapping.entry(id).or_insert(index);
     }
 
-    pub fn link_file_to_symbol(&mut self, name: &String, symbol: &Symbol) {
+    pub(crate) fn link_file_to_symbol(&mut self, name: &String, symbol: &Symbol) {
         if let (Some(file_index), Some(symbol_index)) = (
             self.file_mapping.get(name),
             self.symbol_mapping.get(&symbol.id()),
@@ -130,7 +130,7 @@ impl SymbolGraph {
         }
     }
 
-    pub fn link_symbol_to_symbol(&mut self, a: &Symbol, b: &Symbol) {
+    pub(crate) fn link_symbol_to_symbol(&mut self, a: &Symbol, b: &Symbol) {
         if let (Some(a_index), Some(b_index)) = (
             self.symbol_mapping.get(&a.id()),
             self.symbol_mapping.get(&b.id()),
@@ -142,7 +142,7 @@ impl SymbolGraph {
         }
     }
 
-    pub fn enhance_symbol_to_symbol(&mut self, a: &String, b: &String, ratio: usize) {
+    pub(crate) fn enhance_symbol_to_symbol(&mut self, a: &String, b: &String, ratio: usize) {
         if let (Some(a_index), Some(b_index)) =
             (self.symbol_mapping.get(a), self.symbol_mapping.get(b))
         {
@@ -190,6 +190,14 @@ impl SymbolGraph {
             .collect();
     }
 
+    pub fn list_references(&self, file_name: &String) -> HashMap<Symbol, usize> {
+        return self
+            .list_symbols(file_name)
+            .into_iter()
+            .filter(|(symbol, _)| symbol.kind == SymbolKind::REF)
+            .collect();
+    }
+
     pub fn list_references_by_definition(&self, symbol_id: &String) -> HashMap<Symbol, usize> {
         if !self.symbol_mapping.contains_key(symbol_id) {
             return HashMap::new();
@@ -197,5 +205,15 @@ impl SymbolGraph {
 
         let def_index = self.symbol_mapping.get(symbol_id).unwrap();
         return self.neighbor_symbols(*def_index);
+    }
+
+    pub fn list_definitions_by_reference(&self, symbol_id: &String) -> HashMap<Symbol, usize> {
+        // there are more than one possible definitions
+        if !self.symbol_mapping.contains_key(symbol_id) {
+            return HashMap::new();
+        }
+
+        let ref_index = self.symbol_mapping.get(symbol_id).unwrap();
+        return self.neighbor_symbols(*ref_index);
     }
 }
