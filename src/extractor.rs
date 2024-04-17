@@ -78,6 +78,7 @@ impl Extractor {
 #[cfg(test)]
 mod tests {
     use crate::extractor::Extractor;
+    use std::fs;
     use tracing::info;
 
     #[test]
@@ -171,6 +172,19 @@ export default NumbersManager;
         );
         symbols.iter().for_each(|each| {
             info!("symbol: {:?}", each);
+        })
+    }
+
+    #[test]
+    #[ignore]
+    fn extract_typescript_file() {
+        // for testing extract rules
+        tracing_subscriber::fmt::init();
+        let file_path = "";
+        let file_content = &fs::read_to_string(file_path).unwrap_or_default();
+        let symbols = Extractor::TypeScript.extract(&String::from(file_path), file_content);
+        symbols.iter().for_each(|each| {
+            info!("symbol: {:?} {:?}", each.name, each.kind);
         })
     }
 }

@@ -79,7 +79,6 @@ impl Graph {
         }
         // extract ok
         pb.finish_and_clear();
-        info!("symbol extract finished, files: {}", file_contexts.len());
         return file_contexts;
     }
 
@@ -131,6 +130,7 @@ impl Graph {
 
         let files = relation_graph.files();
         let file_contexts = Self::extract_file_contexts(&conf.project_path, files);
+        info!("symbol extract finished, files: {}", file_contexts.len());
 
         // filter pointless REF
         let mut global_symbol_table: HashMap<String, Vec<Symbol>> =
@@ -156,6 +156,7 @@ impl Graph {
         // 1. file - symbols
         // 2. connect defs and refs
         // 3. priority recalculation
+        info!("start building symbol graph ...");
         let mut symbol_graph = SymbolGraph::new();
         for file_context in &final_file_contexts {
             symbol_graph.add_file(&file_context.path);
