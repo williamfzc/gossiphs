@@ -369,6 +369,7 @@ dependencies = [
  "cc",
  "clap",
  "cupido",
+ "indicatif",
  "petgraph",
  "serde",
  "serde_json",

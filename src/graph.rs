@@ -3,6 +3,7 @@ use crate::symbol::{Symbol, SymbolGraph, SymbolKind};
 use cupido::collector::config::Collect;
 use cupido::collector::config::{get_collector, Config};
 use cupido::relation::graph::RelationGraph;
+use indicatif::ProgressBar;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -24,16 +25,25 @@ impl Graph {
     fn extract_file_contexts(root: &String, files: Vec<String>) -> Vec<FileContext> {
         let mut file_contexts: Vec<FileContext> = Vec::new();
 
-        for each_file in &files {
-            let file_path = &Path::new(&root)
-                .join(each_file)
-                .to_string_lossy()
-                .into_owned();
-            if fs::metadata(file_path).is_err() {
-                continue;
-            }
+        let filtered_files: Vec<(String, String)> = files
+            .iter()
+            .filter_map(|each_file| {
+                let file_path = &Path::new(&root)
+                    .join(each_file)
+                    .to_string_lossy()
+                    .into_owned();
+                if fs::metadata(file_path).is_err() {
+                    return None;
+                }
 
-            let file_extension = match file_path.split('.').last() {
+                return Some((each_file.clone(), file_path.clone()));
+            })
+            .collect();
+
+        let pb = ProgressBar::new(filtered_files.len() as u64);
+        for (each_file, file_path) in &filtered_files {
+            pb.inc(1);
+            let file_extension = match each_file.split('.').last() {
                 Some(ext) => ext.to_lowercase(),
                 None => {
                     debug!("File {} has no extension, skipping...", file_path);
@@ -68,6 +78,7 @@ impl Graph {
             }
         }
         // extract ok
+        pb.finish_and_clear();
         info!("symbol extract finished, files: {}", file_contexts.len());
         return file_contexts;
     }
@@ -116,7 +127,7 @@ impl Graph {
         // 3. building def and ref relations
         let relation_graph = create_cupido_graph(&conf.project_path);
         let size = relation_graph.size();
-        debug!("relation graph size: {:?}", size);
+        info!("relation graph ready, size: {:?}", size);
 
         let files = relation_graph.files();
         let file_contexts = Self::extract_file_contexts(&conf.project_path, files);

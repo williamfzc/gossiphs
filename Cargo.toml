@@ -16,6 +16,7 @@ tree-sitter-rust = "0.20.4"
 petgraph = "0.6.4"
 tree-sitter-typescript = "0.20.5"
 serde = { version = "1.0.197", features = ["derive"] }
+indicatif = "0.17.8"
 
 [build-dependencies]
 cc = "*"
