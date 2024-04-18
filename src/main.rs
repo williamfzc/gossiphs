@@ -1,6 +1,7 @@
 use clap::Parser;
-use gossiphs::graph::{Graph, GraphConfig};
+use gossiphs::graph::{Graph, GraphConfig, RelatedFileContext};
 use inquire::Text;
+use serde::{Deserialize, Serialize};
 use std::fs;
 
 #[derive(Parser, Debug)]
@@ -61,9 +62,17 @@ fn handle_relate(relate_cmd: RelateCommand) {
     let mut config = GraphConfig::default();
     config.project_path = relate_cmd.project_path;
     let g = Graph::from(config);
-    let files = g.related_files(&relate_cmd.file);
+    let file_list: Vec<&str> = relate_cmd.file.split(';').collect();
 
-    let json = serde_json::to_string(&files).unwrap();
+    let mut related_files_data = Vec::new();
+    for file in file_list {
+        let files = g.related_files(&String::from(file));
+        related_files_data.push(RelatedFileWrapper {
+            name: file.to_string(),
+            related: files,
+        });
+    }
+    let json = serde_json::to_string_pretty(&related_files_data).unwrap();
     if !relate_cmd.json.is_none() {
         fs::write(relate_cmd.json.unwrap(), json).expect("");
     } else {
@@ -81,7 +90,11 @@ fn handle_interactive(interactive_cmd: InteractiveCommand) {
         match file_path_result {
             Ok(name) => {
                 let files = g.related_files(&name);
-                let json = serde_json::to_string_pretty(&files).unwrap();
+                let json = serde_json::to_string_pretty(&RelatedFileWrapper {
+                    name,
+                    related: files,
+                })
+                .unwrap();
                 println!("{}", json);
             }
             Err(_) => break,
@@ -89,11 +102,27 @@ fn handle_interactive(interactive_cmd: InteractiveCommand) {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct RelatedFileWrapper {
+    pub name: String,
+    pub related: Vec<RelatedFileContext>,
+}
+
 #[test]
 fn test_handle_relate() {
     let relate_cmd = RelateCommand {
         project_path: String::from("."),
         file: "src/extractor.rs".to_string(),
+        json: None,
+    };
+    handle_relate(relate_cmd);
+}
+
+#[test]
+fn test_handle_relate_files() {
+    let relate_cmd = RelateCommand {
+        project_path: String::from("."),
+        file: "src/extractor.rs;src/main.rs;src/graph.rs".to_string(),
         json: None,
     };
     handle_relate(relate_cmd);

@@ -315,8 +315,8 @@ impl Graph {
                 return RelatedFileContext {
                     name: k.clone(),
                     score: *v,
-                    def_units: self.symbol_graph.list_definitions(k).len(),
-                    ref_units: self.symbol_graph.list_references(k).len(),
+                    defs: self.symbol_graph.list_definitions(k).len(),
+                    refs: self.symbol_graph.list_references(k).len(),
                 };
             })
             .collect::<Vec<_>>();
@@ -329,8 +329,8 @@ impl Graph {
 pub struct RelatedFileContext {
     pub name: String,
     pub score: usize,
-    pub def_units: usize,
-    pub ref_units: usize,
+    pub defs: usize,
+    pub refs: usize,
 }
 
 fn create_cupido_graph(project_path: &String) -> RelationGraph {
