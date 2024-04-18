@@ -31,11 +31,37 @@ struct RelateCommand {
     project_path: String,
 
     #[clap(long)]
+    #[clap(default_value = "")]
     file: String,
+
+    #[clap(long)]
+    #[clap(default_value = "")]
+    file_txt: String,
 
     #[clap(long)]
     #[clap(default_value = None)]
     json: Option<String>,
+}
+
+impl RelateCommand {
+    pub fn get_files(&self) -> Vec<String> {
+        if !self.file_txt.is_empty() {
+            let file_contents = match fs::read_to_string(&self.file_txt) {
+                Ok(contents) => contents,
+                Err(err) => {
+                    eprintln!("Error reading file {}: {}", self.file_txt, err);
+                    return Vec::new();
+                }
+            };
+            return file_contents
+                .clone()
+                .lines()
+                .filter(|each| !each.trim().is_empty())
+                .map(|each| each.to_string())
+                .collect();
+        }
+        return self.file.split(';').map(|each| each.to_string()).collect();
+    }
 }
 
 #[derive(Parser, Debug)]
@@ -60,19 +86,19 @@ fn handle_relate(relate_cmd: RelateCommand) {
         tracing_subscriber::fmt::init();
     }
     let mut config = GraphConfig::default();
-    config.project_path = relate_cmd.project_path;
+    config.project_path = relate_cmd.project_path.clone();
     let g = Graph::from(config);
-    let file_list: Vec<&str> = relate_cmd.file.split(';').collect();
 
     let mut related_files_data = Vec::new();
-    for file in file_list {
+    let files = relate_cmd.get_files();
+    for file in &files {
         let files = g.related_files(&String::from(file));
         related_files_data.push(RelatedFileWrapper {
             name: file.to_string(),
             related: files,
         });
     }
-    let json = serde_json::to_string_pretty(&related_files_data).unwrap();
+    let json = serde_json::to_string(&related_files_data).unwrap();
     if !relate_cmd.json.is_none() {
         fs::write(relate_cmd.json.unwrap(), json).expect("");
     } else {
@@ -113,6 +139,7 @@ fn test_handle_relate() {
     let relate_cmd = RelateCommand {
         project_path: String::from("."),
         file: "src/extractor.rs".to_string(),
+        file_txt: "".to_string(),
         json: None,
     };
     handle_relate(relate_cmd);
@@ -123,6 +150,19 @@ fn test_handle_relate_files() {
     let relate_cmd = RelateCommand {
         project_path: String::from("."),
         file: "src/extractor.rs;src/main.rs;src/graph.rs".to_string(),
+        file_txt: "".to_string(),
+        json: None,
+    };
+    handle_relate(relate_cmd);
+}
+
+#[test]
+#[ignore]
+fn test_handle_relate_file_txt() {
+    let relate_cmd = RelateCommand {
+        project_path: String::from("."),
+        file: "".to_string(),
+        file_txt: "./aa.txt".to_string(),
         json: None,
     };
     handle_relate(relate_cmd);
