@@ -112,6 +112,7 @@ impl Graph {
     fn filter_pointless_symbols(
         file_contexts: &Vec<FileContext>,
         global_symbol_table: &HashMap<String, Vec<Symbol>>,
+        edge_limit: usize,
     ) -> Vec<FileContext> {
         let mut filtered_file_contexts = Vec::new();
         for file_context in file_contexts {
@@ -119,6 +120,7 @@ impl Graph {
                 .symbols
                 .iter()
                 .filter(|symbol| global_symbol_table.contains_key(&symbol.name))
+                .filter(|symbol| global_symbol_table[&symbol.name].len() <= edge_limit)
                 .map(|symbol| symbol.clone())
                 .collect();
 
@@ -146,7 +148,7 @@ impl Graph {
         let mut global_symbol_table: HashMap<String, Vec<Symbol>> =
             Self::build_global_symbol_table(&file_contexts);
         let final_file_contexts =
-            Self::filter_pointless_symbols(&file_contexts, &global_symbol_table);
+            Self::filter_pointless_symbols(&file_contexts, &global_symbol_table, conf.edge_limit);
 
         for file_context in &final_file_contexts {
             // and collect all the definitions
@@ -167,17 +169,22 @@ impl Graph {
         // 2. connect defs and refs
         // 3. priority recalculation
         info!("start building symbol graph ...");
+        let pb = ProgressBar::new(final_file_contexts.len() as u64);
         let mut symbol_graph = SymbolGraph::new();
         for file_context in &final_file_contexts {
+            pb.inc(1);
             symbol_graph.add_file(&file_context.path);
             for symbol in &file_context.symbols {
                 symbol_graph.add_symbol(symbol.clone());
                 symbol_graph.link_file_to_symbol(&file_context.path, symbol);
             }
         }
+        pb.finish_and_clear();
+        pb.reset();
 
         // 2
         for file_context in &final_file_contexts {
+            pb.inc(1);
             for symbol in &file_context.symbols {
                 if symbol.kind != SymbolKind::REF {
                     continue;
@@ -189,13 +196,15 @@ impl Graph {
                 }
             }
         }
+        pb.finish_and_clear();
+        pb.reset();
 
         // 3
         // commit cache
         let mut cache: HashMap<String, HashSet<String>> = HashMap::new();
         let mut related_commits = |f: String| -> HashSet<String> {
-            if let Some(ref_commits) = cache.get(&f) {
-                return ref_commits.clone();
+            return if let Some(ref_commits) = cache.get(&f) {
+                ref_commits.clone()
             } else {
                 let file_commits: HashSet<String> = relation_graph
                     .file_related_commits(&f)
@@ -204,11 +213,12 @@ impl Graph {
                     .collect();
 
                 cache.insert(f.clone(), file_commits.clone());
-                return file_commits;
-            }
+                file_commits
+            };
         };
 
         for file_context in &final_file_contexts {
+            pb.inc(1);
             let def_related_commits = related_commits(file_context.path.clone());
             for symbol in &file_context.symbols {
                 if symbol.kind != SymbolKind::REF {
@@ -228,6 +238,7 @@ impl Graph {
                 }
             }
         }
+        pb.finish_and_clear();
 
         info!(
             "symbol graph ready, nodes: {}, edges: {}",
@@ -333,12 +344,14 @@ fn create_cupido_graph(project_path: &String) -> RelationGraph {
 
 pub struct GraphConfig {
     pub project_path: String,
+    pub edge_limit: usize,
 }
 
 impl GraphConfig {
     pub fn default() -> GraphConfig {
         return GraphConfig {
             project_path: String::from("."),
+            edge_limit: 128,
         };
     }
 }
