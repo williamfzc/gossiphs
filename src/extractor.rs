@@ -6,6 +6,7 @@ use tree_sitter::{Language, Parser, Query, QueryCursor};
 pub enum Extractor {
     Rust,
     TypeScript,
+    Go,
 }
 
 impl Extractor {
@@ -17,6 +18,10 @@ impl Extractor {
             }
             Extractor::TypeScript => {
                 let lang = &tree_sitter_typescript::language_typescript();
+                self._extract(f, s, lang)
+            }
+            Extractor::Go => {
+                let lang = &tree_sitter_go::language();
                 self._extract(f, s, lang)
             }
         };
@@ -168,6 +173,44 @@ class NumbersManager {
 
 export default NumbersManager;
             ""#,
+            ),
+        );
+        symbols.iter().for_each(|each| {
+            info!("symbol: {:?}", each);
+        })
+    }
+
+    #[test]
+    fn extract_golang() {
+        tracing_subscriber::fmt::init();
+        let symbols = Extractor::Go.extract(
+            &String::from("abc"),
+            &String::from(
+                r#"
+package abc
+
+type Parser struct {
+	*Headless
+	engine *sitter.Parser
+}
+
+func NormalFunc(lang *sitter.Language) string {
+	return "hello"
+}
+
+func (*Parser) NormalMethod(lang *sitter.Language) string {
+	return "hi"
+}
+
+func Abcd[T DataType](result *BaseFileResult[T]) []T {
+	return nil
+}
+
+func injectV1Group(v1group *gin.RouterGroup) {
+	// scope
+	scopeGroup := v1group.Group("/")
+}
+            "#,
             ),
         );
         symbols.iter().for_each(|each| {

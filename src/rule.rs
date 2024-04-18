@@ -31,7 +31,17 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (arrow_function (identifier) @exported_symbol)
 (generator_function_declaration name: (identifier) @exported_symbol)
 (method_definition name: (property_identifier) @exported_symbol)
-    "#,
+"#,
+        },
+
+        Extractor::Go => Rule {
+            import_grammar: r#"
+(identifier) @variable_name
+"#,
+            export_grammar: r#"
+(function_declaration name: (identifier) @exported_symbol)
+(method_declaration name: (field_identifier) @exported_symbol)
+"#,
         },
     }
 }
