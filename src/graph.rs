@@ -5,6 +5,7 @@ use cupido::collector::config::{get_collector, Config};
 use cupido::relation::graph::RelationGraph;
 use indicatif::ProgressBar;
 use serde::{Deserialize, Serialize};
+use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
@@ -287,7 +288,8 @@ impl Graph {
                 })
             });
         file_counter.remove(file_name);
-        return file_counter
+
+        let mut contexts = file_counter
             .iter()
             .map(|(k, v)| {
                 return RelatedFileContext {
@@ -298,6 +300,8 @@ impl Graph {
                 };
             })
             .collect::<Vec<_>>();
+        contexts.sort_by_key(|context| Reverse(context.score));
+        return contexts;
     }
 }
 
