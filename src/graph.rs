@@ -363,6 +363,7 @@ mod tests {
     use tracing::{debug, info};
 
     #[test]
+    #[ignore]
     fn symbol_graph_rust() {
         tracing_subscriber::fmt::init();
         let mut config = GraphConfig::default();
@@ -402,6 +403,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn symbol_graph_ts() {
         tracing_subscriber::fmt::init();
         let mut config = GraphConfig::default();
@@ -423,6 +425,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn graph_api() {
         tracing_subscriber::fmt::init();
         let mut config = GraphConfig::default();

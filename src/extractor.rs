@@ -88,7 +88,6 @@ mod tests {
 
     #[test]
     fn extract_rust() {
-        tracing_subscriber::fmt::init();
         let symbols = Extractor::Rust.extract(
             &String::from("abc"),
             &String::from(
@@ -130,7 +129,6 @@ impl Extractor {
 
     #[test]
     fn extract_typescript() {
-        tracing_subscriber::fmt::init();
         let symbols = Extractor::TypeScript.extract(
             &String::from("abc"),
             &String::from(
@@ -182,7 +180,6 @@ export default NumbersManager;
 
     #[test]
     fn extract_golang() {
-        tracing_subscriber::fmt::init();
         let symbols = Extractor::Go.extract(
             &String::from("abc"),
             &String::from(

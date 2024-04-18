@@ -73,6 +73,10 @@ struct InteractiveCommand {
     #[clap(long)]
     #[clap(default_value = ".")]
     project_path: String,
+
+    #[clap(long)]
+    #[clap(default_value = "false")]
+    dry: bool,
 }
 
 fn main() {
@@ -115,8 +119,12 @@ fn handle_relate(relate_cmd: RelateCommand) {
 
 fn handle_interactive(interactive_cmd: InteractiveCommand) {
     let mut config = GraphConfig::default();
-    config.project_path = interactive_cmd.project_path;
+    config.project_path = interactive_cmd.project_path.clone();
     let g = Graph::from(config);
+
+    if interactive_cmd.dry {
+        return;
+    }
 
     loop {
         let file_path_result = Text::new("File Path:").prompt();
