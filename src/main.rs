@@ -41,6 +41,10 @@ struct RelateCommand {
     #[clap(long)]
     #[clap(default_value = None)]
     json: Option<String>,
+
+    #[clap(long)]
+    #[clap(default_value = "true")]
+    ignore_zero: bool,
 }
 
 impl RelateCommand {
@@ -92,7 +96,10 @@ fn handle_relate(relate_cmd: RelateCommand) {
     let mut related_files_data = Vec::new();
     let files = relate_cmd.get_files();
     for file in &files {
-        let files = g.related_files(&String::from(file));
+        let mut files = g.related_files(&String::from(file));
+        if relate_cmd.ignore_zero {
+            files.retain(|each| each.score > 0);
+        }
         related_files_data.push(RelatedFileWrapper {
             name: file.to_string(),
             related: files,
@@ -141,6 +148,7 @@ fn test_handle_relate() {
         file: "src/extractor.rs".to_string(),
         file_txt: "".to_string(),
         json: None,
+        ignore_zero: true,
     };
     handle_relate(relate_cmd);
 }
@@ -152,6 +160,7 @@ fn test_handle_relate_files() {
         file: "src/extractor.rs;src/main.rs;src/graph.rs".to_string(),
         file_txt: "".to_string(),
         json: None,
+        ignore_zero: true,
     };
     handle_relate(relate_cmd);
 }
@@ -164,6 +173,7 @@ fn test_handle_relate_file_txt() {
         file: "".to_string(),
         file_txt: "./aa.txt".to_string(),
         json: None,
+        ignore_zero: true,
     };
     handle_relate(relate_cmd);
 }
