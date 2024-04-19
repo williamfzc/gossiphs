@@ -1,7 +1,9 @@
 [package]
 name = "gossiphs"
-version = "0.1.0"
+version = "0.1.5"
 edition = "2021"
+description = "gossip graphs for general code relationship analysis"
+license = "Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -10,7 +12,7 @@ clap = { version = "4.5.4", features = ["derive"] }
 tracing = "0.1.40"
 serde_json = "1.0.115"
 tracing-subscriber = "0.3.18"
-cupido = "0.3.4"
+cupido = { version = "0.3.4", features = ["vendored-openssl"] }
 tree-sitter = "~0.20.10"
 tree-sitter-rust = "0.20.4"
 petgraph = "0.6.4"
@@ -21,4 +23,4 @@ indicatif = "0.17.8"
 inquire = "0.7.4"
 
 [build-dependencies]
-cc = "*"
+cc = "1.0.94"
