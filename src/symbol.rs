@@ -13,10 +13,10 @@ pub enum SymbolKind {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Symbol {
-    pub(crate) file: String,
-    pub(crate) name: String,
-    pub(crate) range: Range,
-    pub(crate) kind: SymbolKind,
+    pub file: String,
+    pub name: String,
+    pub range: Range,
+    pub kind: SymbolKind,
 }
 
 impl Symbol {
@@ -173,28 +173,32 @@ impl SymbolGraph {
             .collect();
     }
 
-    pub fn list_symbols(&self, file_name: &String) -> HashMap<Symbol, usize> {
+    pub fn list_symbols(&self, file_name: &String) -> Vec<Symbol> {
         if !self.file_mapping.contains_key(file_name) {
-            return HashMap::new();
+            return Vec::new();
         }
 
         let file_index = self.file_mapping.get(file_name).unwrap();
-        return self.neighbor_symbols(*file_index);
-    }
-
-    pub fn list_definitions(&self, file_name: &String) -> HashMap<Symbol, usize> {
         return self
-            .list_symbols(file_name)
-            .into_iter()
-            .filter(|(symbol, _)| symbol.kind == SymbolKind::DEF)
+            .neighbor_symbols(*file_index)
+            .keys()
+            .map(|each| each.clone())
             .collect();
     }
 
-    pub fn list_references(&self, file_name: &String) -> HashMap<Symbol, usize> {
+    pub fn list_definitions(&self, file_name: &String) -> Vec<Symbol> {
         return self
             .list_symbols(file_name)
             .into_iter()
-            .filter(|(symbol, _)| symbol.kind == SymbolKind::REF)
+            .filter(|symbol| symbol.kind == SymbolKind::DEF)
+            .collect();
+    }
+
+    pub fn list_references(&self, file_name: &String) -> Vec<Symbol> {
+        return self
+            .list_symbols(file_name)
+            .into_iter()
+            .filter(|symbol| symbol.kind == SymbolKind::REF)
             .collect();
     }
 

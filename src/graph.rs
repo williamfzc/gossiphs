@@ -17,9 +17,9 @@ pub struct FileContext {
 }
 
 pub struct Graph {
-    pub file_contexts: Vec<FileContext>,
-    pub relation_graph: RelationGraph,
-    pub symbol_graph: SymbolGraph,
+    pub(crate) file_contexts: Vec<FileContext>,
+    pub(crate) _relation_graph: RelationGraph,
+    pub(crate) symbol_graph: SymbolGraph,
 }
 
 impl Graph {
@@ -248,7 +248,7 @@ impl Graph {
 
         return Graph {
             file_contexts,
-            relation_graph,
+            _relation_graph: relation_graph,
             symbol_graph,
         };
     }
@@ -279,7 +279,7 @@ impl Graph {
         self.symbol_graph
             .list_definitions(file_name)
             .iter()
-            .for_each(|(def, _)| {
+            .for_each(|def| {
                 self.symbol_graph
                     .list_references_by_definition(&def.id())
                     .iter()
@@ -294,7 +294,7 @@ impl Graph {
         self.symbol_graph
             .list_references(file_name)
             .iter()
-            .for_each(|(each_ref, _)| {
+            .for_each(|each_ref| {
                 let defs = self
                     .symbol_graph
                     .list_definitions_by_reference(&each_ref.id());
@@ -323,6 +323,16 @@ impl Graph {
         contexts.sort_by_key(|context| Reverse(context.score));
         return contexts;
     }
+
+    pub fn file_metadata(&self, file_name: &String) -> FileMetadata {
+        let symbols = self
+            .symbol_graph
+            .list_symbols(file_name)
+            .iter()
+            .cloned()
+            .collect();
+        return FileMetadata { symbols };
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -331,6 +341,10 @@ pub struct RelatedFileContext {
     pub score: usize,
     pub defs: usize,
     pub refs: usize,
+}
+
+pub struct FileMetadata {
+    pub symbols: Vec<Symbol>,
 }
 
 fn create_cupido_graph(project_path: &String) -> RelationGraph {
@@ -392,7 +406,7 @@ mod tests {
                 "tree-sitter-stack-graphs/src/cli/util/reporter.rs",
             ))
             .iter()
-            .for_each(|(each, _)| {
+            .for_each(|each| {
                 g.symbol_graph
                     .list_references_by_definition(&each.id())
                     .iter()
@@ -416,9 +430,9 @@ mod tests {
         g.symbol_graph
             .list_symbols(&String::from("lsif/src/main.ts"))
             .iter()
-            .for_each(|(each, weight)| {
+            .for_each(|each| {
                 debug!(
-                    "{weight} {:?} {}: {}:{}",
+                    "{:?} {}: {}:{}",
                     each.kind, each.name, each.range.start_point.row, each.range.start_point.column
                 )
             });
