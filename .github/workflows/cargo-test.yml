@@ -37,6 +37,8 @@ jobs:
           git clone https://github.com/typescript-eslint/typescript-eslint --depth 128
           # golang
           git clone https://github.com/gin-gonic/gin --depth 128
+          # python
+          git clone https://github.com/tiangolo/fastapi --depth 128
           
           # execute bin
           cp ./target/debug/gossiphs ./gossiphs
@@ -50,5 +52,9 @@ jobs:
           cd ..
           
           cd gin
+          time ../gossiphs interactive --dry
+          cd ..
+          
+          cd fastapi
           time ../gossiphs interactive --dry
           cd ..

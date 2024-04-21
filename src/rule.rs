@@ -43,5 +43,15 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (method_declaration name: (field_identifier) @exported_symbol)
 "#,
         },
+
+        Extractor::Python => Rule {
+            import_grammar: r#"
+(identifier) @variable_name
+"#,
+            export_grammar: r#"
+(function_definition name: (identifier) @exported_symbol)
+(class_definition name: (identifier) @exported_symbol)
+"#,
+        },
     }
 }

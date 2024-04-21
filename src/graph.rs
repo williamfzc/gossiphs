@@ -84,6 +84,15 @@ impl Graph {
                     };
                     file_contexts.push(file_context);
                 }
+                "py" => {
+                    let symbols = Extractor::Python.extract(each_file, file_content);
+                    let file_context = FileContext {
+                        // use the relative path as key
+                        path: each_file.clone(),
+                        symbols,
+                    };
+                    file_contexts.push(file_context);
+                }
                 _ => {}
             }
         }

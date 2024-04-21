@@ -7,6 +7,7 @@ pub enum Extractor {
     Rust,
     TypeScript,
     Go,
+    Python,
 }
 
 impl Extractor {
@@ -22,6 +23,10 @@ impl Extractor {
             }
             Extractor::Go => {
                 let lang = &tree_sitter_go::language();
+                self._extract(f, s, lang)
+            }
+            Extractor::Python => {
+                let lang = &tree_sitter_python::language();
                 self._extract(f, s, lang)
             }
         };
@@ -225,6 +230,42 @@ func injectV1Group(v1group *gin.RouterGroup) {
         let symbols = Extractor::TypeScript.extract(&String::from(file_path), file_content);
         symbols.iter().for_each(|each| {
             info!("symbol: {:?} {:?}", each.name, each.kind);
+        })
+    }
+
+    #[test]
+    fn extract_python() {
+        let symbols = Extractor::Python.extract(
+            &String::from("abc"),
+            &String::from(
+                r#"
+def normal_fff(self, env_config: EnvConfig):
+    pass
+
+class BaseStep(object):
+    def apply(self, env_config: EnvConfig, result: ResultContext):
+        raise NotImplementedError
+
+    def name(self) -> str:
+        raise NotImplementedError
+
+    def config_name(self) -> str:
+        return self.name().replace("-", "_")
+
+    def get_mod_config(self, env_config: EnvConfig):
+        return getattr(
+            env_config._repo_config.modules,
+            self.config_name(),
+        )
+
+    def enabled(self, env_config: EnvConfig) -> bool:
+        mod_config = self.get_mod_config(env_config)
+        return mod_config.enabled
+            "#,
+            ),
+        );
+        symbols.iter().for_each(|each| {
+            info!("symbol: {:?}", each);
         })
     }
 }
