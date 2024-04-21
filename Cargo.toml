@@ -4,6 +4,7 @@ version = "0.2.0"
 edition = "2021"
 description = "A Rust lib for general code file relationship analysis. Based on tree-sitter and git analysis."
 license = "Apache-2.0"
+homepage = "https://github.com/williamfzc/gossiphs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
