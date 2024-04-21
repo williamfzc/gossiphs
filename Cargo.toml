@@ -21,6 +21,9 @@ tree-sitter-go = "0.20.0"
 serde = { version = "1.0.197", features = ["derive"] }
 indicatif = "0.17.8"
 inquire = "0.7.4"
+tokio = { version = "1", features = ["full"] }
+axum = "0.7.5"
+lazy_static = "1.4.0"
 
 [build-dependencies]
 cc = "1.0.94"

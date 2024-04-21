@@ -1,8 +1,10 @@
 use clap::Parser;
 use gossiphs::graph::{Graph, GraphConfig, RelatedFileContext};
+use gossiphs::server::{server_main, ServerConfig};
 use inquire::Text;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use tracing::info;
 
 #[derive(Parser, Debug)]
 #[clap(
@@ -22,6 +24,9 @@ enum SubCommand {
 
     #[clap(name = "interactive")]
     Interactive(InteractiveCommand),
+
+    #[clap(name = "server")]
+    Server(ServerCommand),
 }
 
 #[derive(Parser, Debug)]
@@ -47,6 +52,28 @@ struct RelateCommand {
     ignore_zero: bool,
 }
 
+#[derive(Parser, Debug)]
+struct InteractiveCommand {
+    #[clap(long)]
+    #[clap(default_value = ".")]
+    project_path: String,
+
+    #[clap(long)]
+    #[clap(default_value = "false")]
+    dry: bool,
+}
+
+#[derive(Parser, Debug)]
+struct ServerCommand {
+    #[clap(long)]
+    #[clap(default_value = ".")]
+    project_path: String,
+
+    #[clap(long)]
+    #[clap(default_value = "9411")]
+    port: u16,
+}
+
 impl RelateCommand {
     pub fn get_files(&self) -> Vec<String> {
         if !self.file_txt.is_empty() {
@@ -68,23 +95,13 @@ impl RelateCommand {
     }
 }
 
-#[derive(Parser, Debug)]
-struct InteractiveCommand {
-    #[clap(long)]
-    #[clap(default_value = ".")]
-    project_path: String,
-
-    #[clap(long)]
-    #[clap(default_value = "false")]
-    dry: bool,
-}
-
 fn main() {
     let cli: Cli = Cli::parse();
 
     match cli.cmd {
         SubCommand::Relate(search_cmd) => handle_relate(search_cmd),
         SubCommand::Interactive(interactive_cmd) => handle_interactive(interactive_cmd),
+        SubCommand::Server(server_cmd) => handle_server(server_cmd),
     }
 }
 
@@ -147,6 +164,18 @@ fn handle_interactive(interactive_cmd: InteractiveCommand) {
 struct RelatedFileWrapper {
     pub name: String,
     pub related: Vec<RelatedFileContext>,
+}
+
+fn handle_server(server_cmd: ServerCommand) {
+    tracing_subscriber::fmt::init();
+    let mut config = GraphConfig::default();
+    config.project_path = server_cmd.project_path.clone();
+    let g = Graph::from(config);
+
+    let mut server_config = ServerConfig::new(g);
+    server_config.port = server_cmd.port.clone();
+    info!("server up, port: {}", server_config.port);
+    server_main(server_config);
 }
 
 #[test]

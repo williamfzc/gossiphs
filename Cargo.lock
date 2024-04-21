@@ -421,14 +421,17 @@ dependencies = [
 name = "gossiphs"
 version = "0.1.5"
 dependencies = [
+ "axum",
  "cc",
  "clap",
  "cupido",
  "indicatif",
  "inquire",
+ "lazy_static",
  "petgraph",
  "serde",
  "serde_json",
+ "tokio",
  "tracing",
  "tracing-subscriber",
  "tree-sitter",

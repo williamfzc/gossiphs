@@ -1,22 +1,56 @@
 use petgraph::graph::{NodeIndex, UnGraph};
 use petgraph::prelude::EdgeRef;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use tree_sitter::Range;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum SymbolKind {
     DEF,
     REF,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct Symbol {
     pub file: String,
     pub name: String,
-    pub range: Range,
+    pub range: RangeWrapper,
     pub kind: SymbolKind,
+}
+
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
+)]
+pub struct Point {
+    pub row: usize,
+    pub column: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct RangeWrapper {
+    pub start_byte: usize,
+    pub end_byte: usize,
+    pub start_point: Point,
+    pub end_point: Point,
+}
+
+impl RangeWrapper {
+    pub fn from(range: Range) -> RangeWrapper {
+        return RangeWrapper {
+            start_byte: range.start_byte,
+            end_byte: range.end_byte,
+            start_point: Point {
+                row: range.start_point.row,
+                column: range.start_point.column,
+            },
+            end_point: Point {
+                row: range.end_point.row,
+                column: range.end_point.column,
+            },
+        };
+    }
 }
 
 impl Symbol {
@@ -25,7 +59,7 @@ impl Symbol {
             file,
             name,
             kind: SymbolKind::DEF,
-            range,
+            range: RangeWrapper::from(range),
         };
     }
 
@@ -34,7 +68,7 @@ impl Symbol {
             file,
             name,
             kind: SymbolKind::REF,
-            range,
+            range: RangeWrapper::from(range),
         };
     }
 

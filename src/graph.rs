@@ -132,6 +132,14 @@ impl Graph {
         filtered_file_contexts
     }
 
+    pub fn empty() -> Graph {
+        return Graph {
+            file_contexts: Vec::new(),
+            _relation_graph: RelationGraph::new(),
+            symbol_graph: SymbolGraph::new(),
+        };
+    }
+
     pub fn from(conf: GraphConfig) -> Graph {
         // 1. call cupido
         // 2. extract symbols
@@ -343,6 +351,7 @@ pub struct RelatedFileContext {
     pub refs: usize,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct FileMetadata {
     pub symbols: Vec<Symbol>,
 }
