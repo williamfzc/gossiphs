@@ -226,9 +226,10 @@ impl Graph {
 
         // 3
         // commit cache
-        let mut cache: HashMap<String, HashSet<String>> = HashMap::new();
+        let mut file_commit_cache: HashMap<String, HashSet<String>> = HashMap::new();
+        let mut commit_file_cache: HashMap<String, HashSet<String>> = HashMap::new();
         let mut related_commits = |f: String| -> HashSet<String> {
-            return if let Some(ref_commits) = cache.get(&f) {
+            return if let Some(ref_commits) = file_commit_cache.get(&f) {
                 ref_commits.clone()
             } else {
                 let file_commits: HashSet<String> = relation_graph
@@ -238,17 +239,28 @@ impl Graph {
                     .filter(|each| {
                         // reduce the impact of large commits
                         // large commit: edit more than 20% files once
-                        return relation_graph.commit_related_files(each).unwrap().len()
-                            < file_len / 5;
+                        return if let Some(ref_files) = commit_file_cache.get(each) {
+                            ref_files.len() < file_len / 5
+                        } else {
+                            let ref_files: HashSet<String> = relation_graph
+                                .commit_related_files(each)
+                                .unwrap()
+                                .into_iter()
+                                .collect();
+
+                            commit_file_cache.insert(each.clone(), ref_files.clone());
+                            return ref_files.len() < file_len / 5;
+                        };
                     })
                     .into_iter()
                     .collect();
 
-                cache.insert(f.clone(), file_commits.clone());
+                file_commit_cache.insert(f.clone(), file_commits.clone());
                 file_commits
             };
         };
 
+        let mut commit_file_cache2: HashMap<String, HashSet<String>> = HashMap::new();
         for file_context in &final_file_contexts {
             pb.inc(1);
             let def_related_commits = related_commits(file_context.path.clone());
@@ -270,8 +282,18 @@ impl Graph {
                     intersection.iter().for_each(|each| {
                         // different range commits should have different scores
                         // large commit has less score
-                        ratio +=
-                            file_len - relation_graph.commit_related_files(each).unwrap().len();
+
+                        if let Some(ref_files) = commit_file_cache2.get(each) {
+                            ratio += file_len - ref_files.len();
+                        } else {
+                            let ref_files: HashSet<String> = relation_graph
+                                .commit_related_files(each)
+                                .unwrap()
+                                .into_iter()
+                                .collect();
+                            commit_file_cache2.insert(each.clone(), ref_files.clone());
+                            ratio += file_len - ref_files.len();
+                        };
                     });
                     symbol_graph.enhance_symbol_to_symbol(&symbol.id(), &def.id(), ratio);
                 }
