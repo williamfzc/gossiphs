@@ -3,6 +3,7 @@ use axum::extract::Query;
 use axum::routing::get;
 use axum::Router;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 
 lazy_static::lazy_static! {
@@ -29,7 +30,8 @@ pub fn create_router() -> Router {
             "/file",
             Router::new()
                 .route("/metadata", get(file_metadata_handler))
-                .route("/relation", get(file_relation_handler)),
+                .route("/relation", get(file_relation_handler))
+                .route("/list", get(file_list_handler)),
         )
         .route("/", get(root_handler));
 }
@@ -74,4 +76,9 @@ async fn file_relation_handler(
 ) -> axum::Json<Vec<RelatedFileContext>> {
     let g = GRAPH_INST.read().unwrap();
     return axum::Json(g.related_files(&params.path));
+}
+
+async fn file_list_handler() -> axum::Json<HashSet<String>> {
+    let g = GRAPH_INST.read().unwrap();
+    return axum::Json(g.files());
 }
