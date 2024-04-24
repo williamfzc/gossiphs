@@ -158,6 +158,7 @@ impl Graph {
         info!("relation graph ready, size: {:?}", size);
 
         let files = relation_graph.files();
+        let file_len = files.len();
         let file_contexts = Self::extract_file_contexts(&conf.project_path, files);
         info!("symbol extract finished, files: {}", file_contexts.len());
 
@@ -227,6 +228,13 @@ impl Graph {
                     .file_related_commits(&f)
                     .unwrap()
                     .into_iter()
+                    .filter(|each| {
+                        // reduce the impact of large commits
+                        // large commit: edit more than 20% files once
+                        return relation_graph.commit_related_files(each).unwrap().len()
+                            < file_len / 5;
+                    })
+                    .into_iter()
                     .collect();
 
                 cache.insert(f.clone(), file_commits.clone());
@@ -250,7 +258,13 @@ impl Graph {
                         .intersection(&def_related_commits)
                         .cloned()
                         .collect();
-                    let ratio = intersection.len();
+
+                    let mut ratio = 0;
+                    intersection.iter().for_each(|each| {
+                        // different range commits should have different scores
+                        // large commit has less score
+                        ratio += file_len - relation_graph.commit_related_files(each).unwrap().len();
+                    });
                     symbol_graph.enhance_symbol_to_symbol(&symbol.id(), &def.id(), ratio);
                 }
             }
