@@ -4,6 +4,8 @@ use cupido::collector::config::Collect;
 use cupido::collector::config::{get_collector, Config};
 use cupido::relation::graph::RelationGraph;
 use indicatif::ProgressBar;
+use rayon::iter::IntoParallelRefIterator;
+use rayon::iter::ParallelIterator;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
@@ -23,9 +25,61 @@ pub struct Graph {
 }
 
 impl Graph {
-    fn extract_file_contexts(root: &String, files: Vec<String>) -> Vec<FileContext> {
-        let mut file_contexts: Vec<FileContext> = Vec::new();
+    fn extract_file_context(file_name: &String, file_path: &String) -> Option<FileContext> {
+        let file_extension = match file_name.split('.').last() {
+            Some(ext) => ext.to_lowercase(),
+            None => {
+                debug!("File {} has no extension, skipping...", file_path);
+                return None;
+            }
+        };
 
+        let file_content = &fs::read_to_string(file_path).unwrap_or_default();
+        if file_content.is_empty() {
+            return None;
+        }
+        return match file_extension.as_str() {
+            "rs" => {
+                let symbols = Extractor::Rust.extract(file_name, file_content);
+                let file_context = FileContext {
+                    // use the relative path as key
+                    path: file_name.clone(),
+                    symbols,
+                };
+                Some(file_context)
+            }
+            "ts" | "tsx" => {
+                let symbols = Extractor::TypeScript.extract(file_name, file_content);
+                let file_context = FileContext {
+                    // use the relative path as key
+                    path: file_name.clone(),
+                    symbols,
+                };
+                Some(file_context)
+            }
+            "go" => {
+                let symbols = Extractor::Go.extract(file_name, file_content);
+                let file_context = FileContext {
+                    // use the relative path as key
+                    path: file_name.clone(),
+                    symbols,
+                };
+                Some(file_context)
+            }
+            "py" => {
+                let symbols = Extractor::Python.extract(file_name, file_content);
+                let file_context = FileContext {
+                    // use the relative path as key
+                    path: file_name.clone(),
+                    symbols,
+                };
+                Some(file_context)
+            }
+            _ => None,
+        };
+    }
+
+    fn extract_file_contexts(root: &String, files: Vec<String>) -> Vec<FileContext> {
         let filtered_files: Vec<(String, String)> = files
             .iter()
             .filter_map(|each_file| {
@@ -36,69 +90,22 @@ impl Graph {
                 if fs::metadata(file_path).is_err() {
                     return None;
                 }
-
                 return Some((each_file.clone(), file_path.clone()));
             })
             .collect();
 
         let pb = ProgressBar::new(filtered_files.len() as u64);
-        for (each_file, file_path) in &filtered_files {
-            pb.inc(1);
-            let file_extension = match each_file.split('.').last() {
-                Some(ext) => ext.to_lowercase(),
-                None => {
-                    debug!("File {} has no extension, skipping...", file_path);
-                    continue;
-                }
-            };
-
-            let file_content = &fs::read_to_string(file_path).unwrap_or_default();
-            if file_content.is_empty() {
-                continue;
-            }
-            match file_extension.as_str() {
-                "rs" => {
-                    let symbols = Extractor::Rust.extract(each_file, file_content);
-                    let file_context = FileContext {
-                        // use the relative path as key
-                        path: each_file.clone(),
-                        symbols,
-                    };
-                    file_contexts.push(file_context);
-                }
-                "ts" | "tsx" => {
-                    let symbols = Extractor::TypeScript.extract(each_file, file_content);
-                    let file_context = FileContext {
-                        // use the relative path as key
-                        path: each_file.clone(),
-                        symbols,
-                    };
-                    file_contexts.push(file_context);
-                }
-                "go" => {
-                    let symbols = Extractor::Go.extract(each_file, file_content);
-                    let file_context = FileContext {
-                        // use the relative path as key
-                        path: each_file.clone(),
-                        symbols,
-                    };
-                    file_contexts.push(file_context);
-                }
-                "py" => {
-                    let symbols = Extractor::Python.extract(each_file, file_content);
-                    let file_context = FileContext {
-                        // use the relative path as key
-                        path: each_file.clone(),
-                        symbols,
-                    };
-                    file_contexts.push(file_context);
-                }
-                _ => {}
-            }
-        }
-        // extract ok
+        let file_contexts: Vec<FileContext> = filtered_files
+            .par_iter()
+            .map(|(each_file, file_path)| {
+                pb.inc(1);
+                return Graph::extract_file_context(each_file, file_path);
+            })
+            .filter(|ctx| ctx.is_some())
+            .map(|ctx| ctx.unwrap())
+            .collect();
         pb.finish_and_clear();
-        return file_contexts;
+        file_contexts
     }
 
     fn build_global_symbol_table(file_contexts: &[FileContext]) -> HashMap<String, Vec<Symbol>> {
@@ -263,7 +270,8 @@ impl Graph {
                     intersection.iter().for_each(|each| {
                         // different range commits should have different scores
                         // large commit has less score
-                        ratio += file_len - relation_graph.commit_related_files(each).unwrap().len();
+                        ratio +=
+                            file_len - relation_graph.commit_related_files(each).unwrap().len();
                     });
                     symbol_graph.enhance_symbol_to_symbol(&symbol.id(), &def.id(), ratio);
                 }
