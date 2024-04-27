@@ -30,10 +30,21 @@ enum SubCommand {
 }
 
 #[derive(Parser, Debug)]
-struct RelateCommand {
-    #[clap(long)]
+struct CommonOptions {
+    #[clap(short, long)]
     #[clap(default_value = ".")]
     project_path: String,
+
+    /// precise-first analysis
+    #[clap(long)]
+    #[clap(default_value = "false")]
+    strict: bool,
+}
+
+#[derive(Parser, Debug)]
+struct RelateCommand {
+    #[clap(flatten)]
+    common_options: CommonOptions,
 
     #[clap(long)]
     #[clap(default_value = "")]
@@ -54,9 +65,8 @@ struct RelateCommand {
 
 #[derive(Parser, Debug)]
 struct InteractiveCommand {
-    #[clap(long)]
-    #[clap(default_value = ".")]
-    project_path: String,
+    #[clap(flatten)]
+    common_options: CommonOptions,
 
     #[clap(long)]
     #[clap(default_value = "false")]
@@ -65,9 +75,8 @@ struct InteractiveCommand {
 
 #[derive(Parser, Debug)]
 struct ServerCommand {
-    #[clap(long)]
-    #[clap(default_value = ".")]
-    project_path: String,
+    #[clap(flatten)]
+    common_options: CommonOptions,
 
     #[clap(long)]
     #[clap(default_value = "9411")]
@@ -111,7 +120,11 @@ fn handle_relate(relate_cmd: RelateCommand) {
         tracing_subscriber::fmt::init();
     }
     let mut config = GraphConfig::default();
-    config.project_path = relate_cmd.project_path.clone();
+    config.project_path = relate_cmd.common_options.project_path.clone();
+    if relate_cmd.common_options.strict {
+        config.def_limit = 1
+    }
+
     let g = Graph::from(config);
 
     let mut related_files_data = Vec::new();
@@ -136,7 +149,11 @@ fn handle_relate(relate_cmd: RelateCommand) {
 
 fn handle_interactive(interactive_cmd: InteractiveCommand) {
     let mut config = GraphConfig::default();
-    config.project_path = interactive_cmd.project_path.clone();
+    config.project_path = interactive_cmd.common_options.project_path.clone();
+    if interactive_cmd.common_options.strict {
+        config.def_limit = 1
+    }
+
     let g = Graph::from(config);
 
     if interactive_cmd.dry {
@@ -169,7 +186,11 @@ struct RelatedFileWrapper {
 fn handle_server(server_cmd: ServerCommand) {
     tracing_subscriber::fmt::init();
     let mut config = GraphConfig::default();
-    config.project_path = server_cmd.project_path.clone();
+    config.project_path = server_cmd.common_options.project_path.clone();
+    if server_cmd.common_options.strict {
+        config.def_limit = 1
+    }
+
     let g = Graph::from(config);
 
     let mut server_config = ServerConfig::new(g);
@@ -181,7 +202,10 @@ fn handle_server(server_cmd: ServerCommand) {
 #[test]
 fn test_handle_relate() {
     let relate_cmd = RelateCommand {
-        project_path: String::from("."),
+        common_options: CommonOptions {
+            project_path: String::from("."),
+            strict: false,
+        },
         file: "src/extractor.rs".to_string(),
         file_txt: "".to_string(),
         json: None,
@@ -193,8 +217,26 @@ fn test_handle_relate() {
 #[test]
 fn test_handle_relate_files() {
     let relate_cmd = RelateCommand {
-        project_path: String::from("."),
+        common_options: CommonOptions {
+            project_path: String::from("."),
+            strict: false,
+        },
         file: "src/extractor.rs;src/main.rs;src/graph.rs".to_string(),
+        file_txt: "".to_string(),
+        json: None,
+        ignore_zero: true,
+    };
+    handle_relate(relate_cmd);
+}
+
+#[test]
+fn test_handle_relate_files_strict() {
+    let relate_cmd = RelateCommand {
+        common_options: CommonOptions {
+            project_path: String::from("."),
+            strict: true,
+        },
+        file: "src/extractor.rs;src/rule.rs;src/main.rs;src/graph.rs".to_string(),
         file_txt: "".to_string(),
         json: None,
         ignore_zero: true,
@@ -206,7 +248,10 @@ fn test_handle_relate_files() {
 #[ignore]
 fn test_handle_relate_file_txt() {
     let relate_cmd = RelateCommand {
-        project_path: String::from("."),
+        common_options: CommonOptions {
+            project_path: String::from("."),
+            strict: false,
+        },
         file: "".to_string(),
         file_txt: "./aa.txt".to_string(),
         json: None,
