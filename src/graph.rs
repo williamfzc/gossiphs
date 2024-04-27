@@ -138,20 +138,26 @@ impl Graph {
         file_contexts: &Vec<FileContext>,
         global_def_symbol_table: &HashMap<String, Vec<Symbol>>,
         global_ref_symbol_table: &HashMap<String, Vec<Symbol>>,
-        edge_limit: usize,
+        def_limit: usize,
+        ref_limit: usize,
     ) -> Vec<FileContext> {
         let mut filtered_file_contexts = Vec::new();
         for file_context in file_contexts {
             let filtered_symbols = file_context
                 .symbols
                 .iter()
-                .filter(|symbol| global_def_symbol_table.contains_key(&symbol.name))
+                .filter(|symbol| {
+                    if !global_def_symbol_table.contains_key(&symbol.name) {
+                        return false;
+                    }
+                    return global_def_symbol_table[&symbol.name].len() <= def_limit;
+                })
                 .filter(|symbol| {
                     // def but no ref
                     if !global_ref_symbol_table.contains_key(&symbol.name) {
                         return true;
                     }
-                    return global_ref_symbol_table[&symbol.name].len() <= edge_limit;
+                    return global_ref_symbol_table[&symbol.name].len() <= ref_limit;
                 })
                 .map(|symbol| symbol.clone())
                 .collect();
@@ -193,7 +199,8 @@ impl Graph {
             &file_contexts,
             &global_def_symbol_table,
             &global_ref_symbol_table,
-            conf.edge_limit,
+            conf.def_limit,
+            conf.ref_limit,
         );
 
         // building graph
@@ -245,9 +252,9 @@ impl Graph {
                     .into_iter()
                     .filter(|each| {
                         // reduce the impact of large commits
-                        // large commit: edit more than 20% files once
+                        // large commit: edit more than 50% files once
                         return if let Some(ref_files) = commit_file_cache.get(each) {
-                            ref_files.len() < file_len / 5
+                            ref_files.len() < file_len / 2
                         } else {
                             let ref_files: HashSet<String> = relation_graph
                                 .commit_related_files(each)
@@ -256,7 +263,7 @@ impl Graph {
                                 .collect();
 
                             commit_file_cache.insert(each.clone(), ref_files.clone());
-                            return ref_files.len() < file_len / 5;
+                            ref_files.len() < file_len / 2
                         };
                     })
                     .into_iter()
@@ -428,14 +435,16 @@ fn create_cupido_graph(project_path: &String) -> RelationGraph {
 
 pub struct GraphConfig {
     pub project_path: String,
-    pub edge_limit: usize,
+    pub def_limit: usize,
+    pub ref_limit: usize,
 }
 
 impl GraphConfig {
     pub fn default() -> GraphConfig {
         return GraphConfig {
             project_path: String::from("."),
-            edge_limit: 128,
+            def_limit: 4,
+            ref_limit: 128,
         };
     }
 }
