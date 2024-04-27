@@ -11,6 +11,7 @@ use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
+use std::time::Instant;
 use tracing::{debug, info};
 
 pub struct FileContext {
@@ -108,26 +109,35 @@ impl Graph {
         file_contexts
     }
 
-    fn build_global_symbol_table(file_contexts: &[FileContext]) -> HashMap<String, Vec<Symbol>> {
-        let mut global_symbol_table: HashMap<String, Vec<Symbol>> = HashMap::new();
+    fn build_global_symbol_table(
+        file_contexts: &[FileContext],
+    ) -> (HashMap<String, Vec<Symbol>>, HashMap<String, Vec<Symbol>>) {
+        let mut global_def_symbol_table: HashMap<String, Vec<Symbol>> = HashMap::new();
+        let mut global_ref_symbol_table: HashMap<String, Vec<Symbol>> = HashMap::new();
 
         file_contexts
             .iter()
             .flat_map(|file_context| file_context.symbols.iter())
-            .filter(|symbol| symbol.kind == SymbolKind::DEF)
             .for_each(|symbol| {
-                global_symbol_table
-                    .entry(symbol.name.clone())
-                    .or_insert_with(Vec::new)
-                    .push(symbol.clone());
+                if symbol.kind == SymbolKind::DEF {
+                    global_def_symbol_table
+                        .entry(symbol.name.clone())
+                        .or_insert_with(Vec::new)
+                        .push(symbol.clone());
+                } else {
+                    global_ref_symbol_table
+                        .entry(symbol.name.clone())
+                        .or_insert_with(Vec::new)
+                        .push(symbol.clone());
+                }
             });
-
-        global_symbol_table
+        return (global_def_symbol_table, global_ref_symbol_table);
     }
 
     fn filter_pointless_symbols(
         file_contexts: &Vec<FileContext>,
-        global_symbol_table: &HashMap<String, Vec<Symbol>>,
+        global_def_symbol_table: &HashMap<String, Vec<Symbol>>,
+        global_ref_symbol_table: &HashMap<String, Vec<Symbol>>,
         edge_limit: usize,
     ) -> Vec<FileContext> {
         let mut filtered_file_contexts = Vec::new();
@@ -135,8 +145,14 @@ impl Graph {
             let filtered_symbols = file_context
                 .symbols
                 .iter()
-                .filter(|symbol| global_symbol_table.contains_key(&symbol.name))
-                .filter(|symbol| global_symbol_table[&symbol.name].len() <= edge_limit)
+                .filter(|symbol| global_def_symbol_table.contains_key(&symbol.name))
+                .filter(|symbol| {
+                    // def but no ref
+                    if !global_ref_symbol_table.contains_key(&symbol.name) {
+                        return true;
+                    }
+                    return global_ref_symbol_table[&symbol.name].len() <= edge_limit;
+                })
                 .map(|symbol| symbol.clone())
                 .collect();
 
@@ -157,6 +173,7 @@ impl Graph {
     }
 
     pub fn from(conf: GraphConfig) -> Graph {
+        let start_time = Instant::now();
         // 1. call cupido
         // 2. extract symbols
         // 3. building def and ref relations
@@ -170,24 +187,14 @@ impl Graph {
         info!("symbol extract finished, files: {}", file_contexts.len());
 
         // filter pointless REF
-        let mut global_symbol_table: HashMap<String, Vec<Symbol>> =
+        let (global_def_symbol_table, global_ref_symbol_table) =
             Self::build_global_symbol_table(&file_contexts);
-        let final_file_contexts =
-            Self::filter_pointless_symbols(&file_contexts, &global_symbol_table, conf.edge_limit);
-
-        for file_context in &final_file_contexts {
-            // and collect all the definitions
-            // k is name, v is location
-            file_context
-                .symbols
-                .iter()
-                .filter(|symbol| symbol.kind == SymbolKind::DEF)
-                .for_each(|symbol| {
-                    if let Some(v) = global_symbol_table.get_mut(&symbol.name) {
-                        v.push(symbol.clone());
-                    }
-                });
-        }
+        let final_file_contexts = Self::filter_pointless_symbols(
+            &file_contexts,
+            &global_def_symbol_table,
+            &global_ref_symbol_table,
+            conf.edge_limit,
+        );
 
         // building graph
         // 1. file - symbols
@@ -215,7 +222,7 @@ impl Graph {
                     continue;
                 }
                 // find all the related definitions, and connect to them
-                let defs = global_symbol_table.get(&symbol.name).unwrap();
+                let defs = global_def_symbol_table.get(&symbol.name).unwrap();
                 for def in defs {
                     symbol_graph.link_symbol_to_symbol(def, symbol);
                 }
@@ -268,7 +275,7 @@ impl Graph {
                 if symbol.kind != SymbolKind::REF {
                     continue;
                 }
-                let defs = global_symbol_table.get(&symbol.name).unwrap();
+                let defs = global_def_symbol_table.get(&symbol.name).unwrap();
                 for def in defs {
                     let f = def.file.clone();
                     let ref_related_commits = related_commits(f);
@@ -306,6 +313,7 @@ impl Graph {
             symbol_graph.symbol_mapping.len(),
             symbol_graph.g.edge_count(),
         );
+        info!("total time cost: {:?}", start_time.elapsed());
 
         return Graph {
             file_contexts,
