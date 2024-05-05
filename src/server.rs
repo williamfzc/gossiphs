@@ -1,9 +1,10 @@
 use crate::graph::{FileMetadata, Graph, RelatedFileContext};
+use crate::symbol::{Symbol, SymbolKind};
 use axum::extract::Query;
 use axum::routing::get;
 use axum::Router;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
 lazy_static::lazy_static! {
@@ -32,6 +33,12 @@ pub fn create_router() -> Router {
                 .route("/metadata", get(file_metadata_handler))
                 .route("/relation", get(file_relation_handler))
                 .route("/list", get(file_list_handler)),
+        )
+        .nest(
+            "/symbol",
+            Router::new()
+                .route("/relation", get(symbol_relation_handler))
+                .route("/metadata", get(symbol_metadata_handler)),
         )
         .route("/", get(root_handler));
 }
@@ -66,6 +73,17 @@ struct FileParams {
     pub path: String,
 }
 
+#[derive(Deserialize, Serialize, Debug)]
+struct SymbolParams {
+    pub path: String,
+    pub start_byte: usize,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+struct SymbolIdParams {
+    pub id: String,
+}
+
 async fn file_metadata_handler(Query(params): Query<FileParams>) -> axum::Json<FileMetadata> {
     let g = GRAPH_INST.read().unwrap();
     return axum::Json(g.file_metadata(&params.path));
@@ -81,4 +99,48 @@ async fn file_relation_handler(
 async fn file_list_handler() -> axum::Json<HashSet<String>> {
     let g = GRAPH_INST.read().unwrap();
     return axum::Json(g.files());
+}
+
+async fn symbol_relation_handler(
+    Query(params): Query<SymbolParams>,
+) -> axum::Json<HashMap<String, usize>> {
+    let g = GRAPH_INST.read().unwrap();
+    let targets: Vec<Symbol> = g
+        .file_metadata(&params.path)
+        .symbols
+        .into_iter()
+        .filter(|each| {
+            return each.range.start_byte == params.start_byte;
+        })
+        .collect();
+    if targets.len() == 0 {
+        return axum::Json(HashMap::new());
+    }
+    // only one
+    let target = &targets[0];
+    let symbol_map = match target.kind {
+        SymbolKind::DEF => g.symbol_graph.list_references_by_definition(&target.id()),
+        SymbolKind::REF => g.symbol_graph.list_definitions_by_reference(&target.id()),
+    };
+    let str_symbol_map: HashMap<String, usize> = symbol_map
+        .into_iter()
+        .map(|(key, value)| {
+            return (key.id(), value);
+        })
+        .collect();
+    return axum::Json(str_symbol_map);
+}
+
+async fn symbol_metadata_handler(
+    Query(params): Query<SymbolIdParams>,
+) -> axum::Json<Option<Symbol>> {
+    let g = GRAPH_INST.read().unwrap();
+    let ret = g.symbol_graph.symbol_mapping.get(&params.id);
+    if ret.is_none() {
+        return axum::Json(None);
+    }
+
+    return axum::Json(Option::from(
+        g.symbol_graph.g[*ret.unwrap()].get_symbol().unwrap(),
+    ));
 }
