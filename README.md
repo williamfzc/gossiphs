@@ -54,6 +54,22 @@ While there is undoubtedly a trade-off in precision, the benefits are clear:
 
 The project is still in the experimental stage.
 
+### As a command line tool
+
+You can find pre-compiled files for your platform
+on [Our Release Page](https://github.com/williamfzc/gossiphs/releases). After extraction, you can use `gossiphs --help`
+to find the corresponding help.
+
+For example, you can use this command to generate an [obsidian vault](https://help.obsidian.md/Getting+started/Create+a+vault):
+
+```bash
+gossiphs obsidian --project-path . --vault-dir ./target_vault
+```
+
+and get a code relation graph:
+
+<img width="644" alt="image" src="https://github.com/williamfzc/gossiphs/assets/13421694/03a35063-56b4-4d23-8a24-612708030138">
+
 ### As a rust library
 
 Please refer to [examples](examples) for usage.
@@ -84,11 +100,7 @@ fn main() {
 }
 ```
 
-### As a command line tool
-
-You can find pre-compiled files for your platform
-on [Our Release Page](https://github.com/williamfzc/gossiphs/releases). After extraction, you can use `gossiphs --help`
-to find the corresponding help.
+### As a local server
 
 Starting a local server similar to LSP for other clients to use may be a reasonable approach, which is what we are
 currently doing.
