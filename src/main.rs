@@ -4,7 +4,10 @@ use gossiphs::server::{server_main, ServerConfig};
 use inquire::Text;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use tracing::info;
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
+use tracing::{debug, info};
 
 #[derive(Parser, Debug)]
 #[clap(
@@ -27,6 +30,9 @@ enum SubCommand {
 
     #[clap(name = "server")]
     Server(ServerCommand),
+
+    #[clap(name = "obsidian")]
+    Obsidian(ObsidianCommand),
 }
 
 #[derive(Parser, Debug)]
@@ -83,6 +89,15 @@ struct ServerCommand {
     port: u16,
 }
 
+#[derive(Parser, Debug)]
+struct ObsidianCommand {
+    #[clap(flatten)]
+    common_options: CommonOptions,
+
+    #[clap(long)]
+    vault_dir: String,
+}
+
 impl RelateCommand {
     pub fn get_files(&self) -> Vec<String> {
         if !self.file_txt.is_empty() {
@@ -111,6 +126,7 @@ fn main() {
         SubCommand::Relate(search_cmd) => handle_relate(search_cmd),
         SubCommand::Interactive(interactive_cmd) => handle_interactive(interactive_cmd),
         SubCommand::Server(server_cmd) => handle_server(server_cmd),
+        SubCommand::Obsidian(obsidian_cmd) => handle_obsidian(obsidian_cmd),
     }
 }
 
@@ -199,6 +215,48 @@ fn handle_server(server_cmd: ServerCommand) {
     server_main(server_config);
 }
 
+fn handle_obsidian(obsidian_cmd: ObsidianCommand) {
+    tracing_subscriber::fmt::init();
+    let mut config = GraphConfig::default();
+    config.project_path = obsidian_cmd.common_options.project_path.clone();
+    if obsidian_cmd.common_options.strict {
+        config.def_limit = 1
+    }
+
+    let g = Graph::from(config);
+
+    // create mirror files
+    // add links to files
+    let files = g.files();
+    match fs::create_dir(&obsidian_cmd.vault_dir) {
+        Ok(_) => debug!("Directory created successfully."),
+        Err(e) => panic!("Error creating directory: {}", e),
+    }
+
+    for each_file in files {
+        let related = g.related_files(&each_file);
+        let markdown_filename = format!("{}/{}.md", &obsidian_cmd.vault_dir, each_file);
+        let mut markdown_content = String::new();
+        for related_file in related {
+            markdown_content.push_str(&format!("[[{}]]\n", related_file.name));
+        }
+
+        let path = Path::new(&markdown_filename);
+        let parent = path.parent().unwrap_or_else(|| Path::new("."));
+        if let Err(why) = fs::create_dir_all(parent) {
+            panic!("couldn't create directory {}: {}", parent.display(), why);
+        }
+        let mut file = match File::create(&markdown_filename) {
+            Err(why) => panic!("couldn't create {}: {}", markdown_filename, why),
+            Ok(file) => file,
+        };
+        match file.write_all(markdown_content.as_bytes()) {
+            Err(why) => panic!("couldn't write to {}: {}", markdown_filename, why),
+            Ok(_) => debug!("Successfully wrote to {}", markdown_filename),
+        }
+    }
+}
+
 #[test]
 fn test_handle_relate() {
     let relate_cmd = RelateCommand {
@@ -258,4 +316,28 @@ fn test_handle_relate_file_txt() {
         ignore_zero: true,
     };
     handle_relate(relate_cmd);
+}
+
+#[test]
+#[ignore]
+fn server_test() {
+    handle_server(ServerCommand {
+        common_options: CommonOptions {
+            project_path: ".".to_string(),
+            strict: false,
+        },
+        port: 9411,
+    })
+}
+
+#[test]
+#[ignore]
+fn obsidian_test() {
+    handle_obsidian(ObsidianCommand {
+        common_options: CommonOptions {
+            project_path: ".".to_string(),
+            strict: false,
+        },
+        vault_dir: "./vault".to_string(),
+    })
 }
