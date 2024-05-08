@@ -31,6 +31,8 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (arrow_function (identifier) @exported_symbol)
 (generator_function_declaration name: (identifier) @exported_symbol)
 (method_definition name: (property_identifier) @exported_symbol)
+(type_alias_declaration name: (type_identifier) @exported_symbol)
+(export_specifier (identifier) @exported_symbol)
 "#,
         },
 

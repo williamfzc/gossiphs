@@ -142,6 +142,10 @@ import { store } from 'docx-deps';
 
 import { toggleShowCommentNumbers } from '$common/redux/actions';
 
+export type DocVerseDeps = DocVerseDepsImpl;
+export { loadBlockitUIComponent } from 'docx-deps';
+export const aaaaa = "cbde";
+
 export interface ClickEvent {
   index: number;
   commentIds: string[];
