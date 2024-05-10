@@ -50,6 +50,18 @@ While there is undoubtedly a trade-off in precision, the benefits are clear:
 3. Language support: We can easily support the vast majority of programming languages, meeting the analysis needs of
    various types of repositories.
 
+## Supported Languages
+
+We are expanding language support based on [Tree-Sitter Query](https://tree-sitter.github.io/tree-sitter/code-navigation-systems), which isn't too costly. 
+If you're interested, you can check out the [contribution](#contribution) section.
+
+| Language   | Status |
+|------------|--------|
+| Rust       | ✅      |
+| Python     | ✅      |
+| TypeScript | ✅      |
+| Golang     | ✅      |
+
 ## Usage
 
 The project is still in the experimental stage.
@@ -60,7 +72,8 @@ You can find pre-compiled files for your platform
 on [Our Release Page](https://github.com/williamfzc/gossiphs/releases). After extraction, you can use `gossiphs --help`
 to find the corresponding help.
 
-For example, you can use this command to generate an [obsidian vault](https://help.obsidian.md/Getting+started/Create+a+vault):
+For example, you can use this command to generate
+an [obsidian vault](https://help.obsidian.md/Getting+started/Create+a+vault):
 
 ```bash
 gossiphs obsidian --project-path . --vault-dir ./target_vault
@@ -126,7 +139,13 @@ on the weight returned.
 ## Contribution
 
 The project is still in a very early and experimental stage. If you are interested, please leave your thoughts through
-an issue. In the short term, we hope to add support for more languages, which is not too complicated.
+an issue. In the short term, we hope to build better support for more languages.
+
+You just need to:
+
+1. Edit rules in [src/rule.rs](src/rule.rs)
+2. Test it in [src/extractor.rs](src/extractor.rs)
+3. Try it with your repo in [src/graph.rs](src/graph.rs)
 
 ## License
 
