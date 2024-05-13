@@ -33,6 +33,8 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (method_definition name: (property_identifier) @exported_symbol)
 (type_alias_declaration name: (type_identifier) @exported_symbol)
 (export_specifier (identifier) @exported_symbol)
+(interface_declaration name: (type_identifier) @exported_symbol)
+(class_declaration name: (type_identifier) @exported_symbol)
 "#,
         },
 
