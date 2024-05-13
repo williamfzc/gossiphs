@@ -456,6 +456,7 @@ dependencies = [
  "cc",
  "clap",
  "cupido",
+ "git2",
  "indicatif",
  "inquire",
  "lazy_static",

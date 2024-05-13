@@ -411,7 +411,7 @@ impl Graph {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct RelatedFileContext {
     pub name: String,
     pub score: usize,
@@ -433,6 +433,7 @@ fn create_cupido_graph(project_path: &String) -> RelationGraph {
     return graph;
 }
 
+#[derive(Clone)]
 pub struct GraphConfig {
     pub project_path: String,
     pub def_limit: usize,
