@@ -1,6 +1,6 @@
 use clap::Parser;
 use git2::build::CheckoutBuilder;
-use git2::{DiffOptions, Repository, RepositoryState};
+use git2::{DiffOptions, Repository, Status};
 use gossiphs::graph::{Graph, GraphConfig, RelatedFileContext};
 use gossiphs::server::{server_main, ServerConfig};
 use inquire::Text;
@@ -289,11 +289,36 @@ struct DiffFileContext {
     removed: Vec<RelatedFileContext>,
 }
 
+fn is_working_directory_clean(repo: &Repository) -> bool {
+    match repo.statuses(None) {
+        Ok(statuses) => {
+            for entry in statuses.iter() {
+                let status = entry.status();
+                if status.contains(Status::WT_NEW)
+                    || status.contains(Status::WT_MODIFIED)
+                    || status.contains(Status::WT_DELETED)
+                    || status.contains(Status::WT_TYPECHANGE)
+                    || status.contains(Status::WT_RENAMED)
+                    || status.contains(Status::INDEX_NEW)
+                    || status.contains(Status::INDEX_MODIFIED)
+                    || status.contains(Status::INDEX_DELETED)
+                    || status.contains(Status::INDEX_TYPECHANGE)
+                    || status.contains(Status::INDEX_RENAMED)
+                {
+                    return false;
+                }
+            }
+            true
+        }
+        Err(_) => false,
+    }
+}
+
 fn handle_diff(diff_cmd: DiffCommand) {
     // repo status check
     let project_path = diff_cmd.common_options.project_path;
     let repo = Repository::open(&project_path).unwrap();
-    if repo.state() != RepositoryState::Clean {
+    if !is_working_directory_clean(&repo) {
         println!("Working directory is dirty. Commit or stash changes first.");
         return;
     }
