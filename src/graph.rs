@@ -340,12 +340,8 @@ impl Graph {
             .collect();
     }
 
-    pub fn file_exists(&self, file_name: &String) -> bool {
-        return self.files().contains(file_name);
-    }
-
     pub fn related_files(&self, file_name: &String) -> Vec<RelatedFileContext> {
-        if !self.file_exists(file_name) {
+        if !self.files().contains(file_name) {
             return Vec::new();
         }
 
@@ -398,6 +394,21 @@ impl Graph {
             .collect::<Vec<_>>();
         contexts.sort_by_key(|context| Reverse(context.score));
         return contexts;
+    }
+
+    pub fn related_symbols(&self, symbol: &Symbol) -> HashMap<Symbol, usize> {
+        return match symbol.kind {
+            SymbolKind::DEF => self
+                .symbol_graph
+                .list_references_by_definition(&symbol.id())
+                .into_iter()
+                .collect(),
+            SymbolKind::REF => self
+                .symbol_graph
+                .list_definitions_by_reference(&symbol.id())
+                .into_iter()
+                .collect(),
+        };
     }
 
     pub fn file_metadata(&self, file_name: &String) -> FileMetadata {
