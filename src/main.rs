@@ -314,6 +314,12 @@ fn is_working_directory_clean(repo: &Repository) -> bool {
     }
 }
 
+fn get_current_branch(repo: &Repository) -> Option<String> {
+    let head = repo.head().ok()?;
+    let shorthand = head.shorthand()?;
+    Some(shorthand.to_string())
+}
+
 fn handle_diff(diff_cmd: DiffCommand) {
     // repo status check
     let project_path = diff_cmd.common_options.project_path;
@@ -322,6 +328,7 @@ fn handle_diff(diff_cmd: DiffCommand) {
         println!("Working directory is dirty. Commit or stash changes first.");
         return;
     }
+    let current_branch = get_current_branch(&repo);
     let target_object = repo.revparse_single(&diff_cmd.target).unwrap();
     let target_commit = target_object.as_commit().unwrap();
     let source_object = repo.revparse_single(&diff_cmd.source).unwrap();
@@ -344,6 +351,17 @@ fn handle_diff(diff_cmd: DiffCommand) {
     repo.checkout_tree(&source_object, Some(&mut builder))
         .unwrap();
     repo.set_head_detached(source_commit.id()).unwrap();
+    // reset to branch
+    if !current_branch.is_none() {
+        let current_branch_str = current_branch.unwrap();
+        if let Err(e) = repo.set_head(&format!("refs/heads/{}", current_branch_str)) {
+            eprintln!(
+                "Failed to switch back to branch '{}': {}",
+                current_branch_str, e
+            );
+        }
+    }
+
     let source_graph = Graph::from(config);
 
     // diff files
