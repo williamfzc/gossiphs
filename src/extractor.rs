@@ -8,6 +8,7 @@ pub enum Extractor {
     TypeScript,
     Go,
     Python,
+    JavaScript,
 }
 
 impl Extractor {
@@ -27,6 +28,10 @@ impl Extractor {
             }
             Extractor::Python => {
                 let lang = &tree_sitter_python::language();
+                self._extract(f, s, lang)
+            }
+            Extractor::JavaScript => {
+                let lang = &tree_sitter_javascript::language();
                 self._extract(f, s, lang)
             }
         };
@@ -265,6 +270,52 @@ class BaseStep(object):
     def enabled(self, env_config: EnvConfig) -> bool:
         mod_config = self.get_mod_config(env_config)
         return mod_config.enabled
+            "#,
+            ),
+        );
+        symbols.iter().for_each(|each| {
+            info!("symbol: {:?}", each);
+        })
+    }
+
+    #[test]
+    fn extract_javascript() {
+        let symbols = Extractor::JavaScript.extract(
+            &String::from("abc"),
+            &String::from(
+                r#"
+import React from 'react';
+import { Component } from 'react';
+import { SomeDefaultExport } from './some-module';
+import * as SomeNamespace from './some-namespace';
+import { namedFunction, namedClass } from './some-library';
+
+export default function exampleFunction() {
+    console.log('This is an example function.');
+}
+
+export function namedFunction() {
+    console.log('This is a named function.');
+}
+
+export class namedClass {
+    constructor() {
+        console.log('This is a named class.');
+    }
+}
+
+const exportsObject = {
+    anotherFunction: function() {
+        console.log('This is another function.');
+    },
+    anotherClass: class {
+        constructor() {
+            console.log('This is another class.');
+        }
+    }
+};
+
+export { exportsObject };
             "#,
             ),
         );

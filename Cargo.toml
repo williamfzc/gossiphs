@@ -20,6 +20,7 @@ petgraph = "0.6.4"
 tree-sitter-typescript = "0.20.5"
 tree-sitter-go = "0.20.0"
 tree-sitter-python = "0.20.4"
+tree-sitter-javascript = "0.20.4"
 serde = { version = "1.0.197", features = ["derive"] }
 indicatif = "0.17.8"
 inquire = "0.7.4"
