@@ -5,6 +5,27 @@
 
 An experimental Rust library for general code file relationship analysis. Based on tree-sitter and git analysis.
 
+## What's it
+
+Gossiphs can analyze the history of commits and the relationships between variable declarations and references in your
+codebase to obtain a relationship diagram of the code files.
+
+It also allows developers to query the content declared in each file, thereby enabling free search for its references
+throughout the entire codebase to achieve more complex analysis.
+
+```mermaid
+graph TD
+    A[main.py] --- B[module_a.py]
+    A ---  C[module_b.py]
+    B --- D[utils.py]
+    C --- D
+    A --- E[module_c.py]
+    E --- F[module_d.py]
+    E --- H[module_e.py]
+    H --- I[module_f.py]
+    I --- D
+```
+
 ## Goal & Motivation
 
 Code navigation is a fascinating subject that plays a pivotal role in various domains, such as:
@@ -52,7 +73,8 @@ While there is undoubtedly a trade-off in precision, the benefits are clear:
 
 ## Supported Languages
 
-We are expanding language support based on [Tree-Sitter Query](https://tree-sitter.github.io/tree-sitter/code-navigation-systems), which isn't too costly. 
+We are expanding language support based
+on [Tree-Sitter Query](https://tree-sitter.github.io/tree-sitter/code-navigation-systems), which isn't too costly.
 If you're interested, you can check out the [contribution](#contribution) section.
 
 | Language   | Status |
@@ -125,6 +147,10 @@ currently doing.
 API desc can be found [here](./src/server.rs).
 
 ## Precision
+
+> Static analysis has its limits, such as dynamic binding.
+> Therefore, it is unlikely to achieve the level of accuracy provided by LSP, but it can offer sufficient accuracy in
+> the areas where it is primarily used.
 
 The method we use to demonstrate accuracy is to compare the results with those of LSP/LSIF. It must be admitted that
 static inference is almost impossible to obtain all reference relationships like LSP, but in strict mode, our
