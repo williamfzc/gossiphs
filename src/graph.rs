@@ -85,6 +85,15 @@ impl Graph {
                 };
                 Some(file_context)
             }
+            "java" => {
+                let symbols = Extractor::Java.extract(file_name, file_content);
+                let file_context = FileContext {
+                    // use the relative path as key
+                    path: file_name.clone(),
+                    symbols,
+                };
+                Some(file_context)
+            }
             _ => None,
         };
     }

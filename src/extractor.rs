@@ -9,6 +9,7 @@ pub enum Extractor {
     Go,
     Python,
     JavaScript,
+    Java,
 }
 
 impl Extractor {
@@ -31,6 +32,10 @@ impl Extractor {
                 self._extract(f, s, lang)
             }
             Extractor::JavaScript => {
+                let lang = &tree_sitter_javascript::language();
+                self._extract(f, s, lang)
+            }
+            Extractor::Java => {
                 let lang = &tree_sitter_javascript::language();
                 self._extract(f, s, lang)
             }
@@ -316,6 +321,28 @@ const exportsObject = {
 };
 
 export { exportsObject };
+            "#,
+            ),
+        );
+        symbols.iter().for_each(|each| {
+            info!("symbol: {:?}", each);
+        })
+    }
+
+    #[test]
+    fn extract_java() {
+        let symbols = Extractor::Java.extract(
+            &String::from("abc"),
+            &String::from(
+                r#"
+package example;
+import com.google.common.util.concurrent.Futures;
+
+public class Example {
+	public static void hello() {
+		System.out.println(Futures.immediateCancelledFuture());
+	}
+}
             "#,
             ),
         );

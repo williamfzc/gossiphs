@@ -60,12 +60,20 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 
         Extractor::JavaScript => Rule {
             import_grammar: r#"
-    (identifier) @variable_name
+(identifier) @variable_name
     "#,
             export_grammar: r#"
-    (function_declaration name: (identifier) @exported_symbol)
-    (class_declaration name: (identifier) @exported_symbol)
+(function_declaration name: (identifier) @exported_symbol)
+(class_declaration name: (identifier) @exported_symbol)
     "#,
+        },
+        Extractor::Java => Rule {
+            import_grammar: r#"
+(variable_declarator (identifier) @variable_name)
+  "#,
+            export_grammar: r#"
+(class_declaration name: (identifier) @exported_symbol)
+  "#,
         },
     }
 }
