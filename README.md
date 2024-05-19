@@ -104,6 +104,7 @@ gossiphs diff
 
 # custom diff
 gossiphs diff --target HEAD~5
+gossiphs diff --target d18a5db39752d244664a23f74e174448b66b5b7e
 
 # output json
 gossiphs diff --json

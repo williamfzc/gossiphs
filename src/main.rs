@@ -1,6 +1,6 @@
 use clap::Parser;
 use git2::build::CheckoutBuilder;
-use git2::{DiffOptions, Repository, Status};
+use git2::{Commit, DiffOptions, Error, Object, ObjectType, Repository, Status};
 use gossiphs::graph::{Graph, GraphConfig, RelatedFileContext};
 use gossiphs::server::{server_main, ServerConfig};
 use inquire::Text;
@@ -324,6 +324,28 @@ fn get_current_branch(repo: &Repository) -> Option<String> {
     Some(shorthand.to_string())
 }
 
+fn get_commit_and_object<'repo>(
+    repo: &'repo Repository,
+    rev: &str,
+) -> Result<(Commit<'repo>, Object<'repo>), Error> {
+    let obj = repo.revparse_single(rev)?;
+
+    // Check if the object is a commit or needs to be peeled to a commit
+    let commit = if obj.kind() == Some(ObjectType::Commit) {
+        obj.as_commit()
+            .map(|commit| (commit.clone(), obj.clone()))
+            .ok_or_else(|| Error::from_str("Object is not a commit"))
+    } else {
+        let peeled_obj = obj.peel(ObjectType::Commit)?;
+        peeled_obj
+            .as_commit()
+            .map(|commit| (commit.clone(), peeled_obj.clone()))
+            .ok_or_else(|| Error::from_str("Object could not be peeled to commit"))
+    };
+
+    commit
+}
+
 fn handle_diff(diff_cmd: DiffCommand) {
     // repo status check
     let project_path = diff_cmd.common_options.project_path;
@@ -333,10 +355,8 @@ fn handle_diff(diff_cmd: DiffCommand) {
         return;
     }
     let current_branch = get_current_branch(&repo);
-    let target_object = repo.revparse_single(&diff_cmd.target).unwrap();
-    let target_commit = target_object.as_commit().unwrap();
-    let source_object = repo.revparse_single(&diff_cmd.source).unwrap();
-    let source_commit = source_object.as_commit().unwrap();
+    let (target_commit, target_object) = get_commit_and_object(&repo, &diff_cmd.target).unwrap();
+    let (source_commit, source_object) = get_commit_and_object(&repo, &diff_cmd.source).unwrap();
 
     // gen graphs
     let mut builder = CheckoutBuilder::new();
@@ -554,5 +574,15 @@ fn diff_test() {
         target: "HEAD~10".to_string(),
         source: "HEAD".to_string(),
         json: false,
-    })
+    });
+
+    handle_diff(DiffCommand {
+        common_options: CommonOptions {
+            project_path: ".".parse().unwrap(),
+            strict: false,
+        },
+        target: "d18a5db39752d244664a23f74e174448b66b5b7e".to_string(),
+        source: "HEAD".to_string(),
+        json: false,
+    });
 }
