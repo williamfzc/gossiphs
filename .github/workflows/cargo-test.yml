@@ -39,6 +39,10 @@ jobs:
           git clone https://github.com/gin-gonic/gin --depth 128
           # python
           git clone https://github.com/tiangolo/fastapi --depth 128
+          # java
+          git clone https://github.com/projectlombok/lombok --depth 128
+          # javascript
+          git clone https://github.com/lodash/lodash --depth 128
           
           # execute bin
           cp ./target/debug/gossiphs ./gossiphs
@@ -56,5 +60,13 @@ jobs:
           cd ..
           
           cd fastapi
+          time ../gossiphs interactive --dry
+          cd ..
+          
+          cd lombok
+          time ../gossiphs interactive --dry
+          cd ..
+          
+          cd lodash
           time ../gossiphs interactive --dry
           cd ..
