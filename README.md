@@ -83,6 +83,8 @@ If you're interested, you can check out the [contribution](#contribution) sectio
 | Python     | ✅      |
 | TypeScript | ✅      |
 | Golang     | ✅      |
+| Java       | ✅      |
+| JavaScript | ✅      |
 
 ## Usage
 
@@ -93,6 +95,47 @@ The project is still in the experimental stage.
 You can find pre-compiled files for your platform
 on [Our Release Page](https://github.com/williamfzc/gossiphs/releases). After extraction, you can use `gossiphs --help`
 to find the corresponding help.
+
+#### Diff with context
+
+```bash
+# diff between HEAD and HEAD~1
+gossiphs diff
+
+# custom diff
+gossiphs diff --target HEAD~5
+
+# output json
+gossiphs diff --json
+```
+
+output:
+
+```text
+scripts/utils/builder.js
+├── M: scripts/build.js
+├── M: src/services/config/index.ts
+├── M: scripts/utils/crx-pack/index.js
+├── M: src/ui/pages/app/app.tsx
+├── M: src/utils/_.ts
+├── M: scripts/utils/utils.js
+├── M: scripts/utils/i18n.js
+├── M: scripts/utils/manifest.js
+├── M: scripts/utils/version.js
+├── M: scripts/utils/webpack.config.js
+└── M: scripts/utils/zip-pack.js
+
+scripts/utils/manifest.js
+├── M: src/utils/_.ts
+├── M: scripts/utils/builder.js
+└── M: src/content-script/starter.ts
+
+scripts/utils/version.js
+├── M: scripts/utils/builder.js
+└── M: src/utils/_.ts
+```
+
+#### Obsidian Graph
 
 For example, you can use this command to generate
 an [obsidian vault](https://help.obsidian.md/Getting+started/Create+a+vault):

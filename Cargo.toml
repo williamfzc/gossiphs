@@ -30,6 +30,7 @@ axum = "0.7.5"
 lazy_static = "1.4.0"
 rayon = "1.10"
 git2 = "0.18.3"
+termtree = "0.4.1"
 
 [build-dependencies]
 cc = "1.0.94"

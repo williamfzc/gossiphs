@@ -10,6 +10,7 @@ use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+use termtree::Tree;
 use tracing::{debug, info};
 
 #[derive(Parser, Debug)]
@@ -118,9 +119,10 @@ struct DiffCommand {
     #[clap(default_value = "HEAD")]
     source: String,
 
+    /// use json format for output, else use tree
     #[clap(long)]
-    #[clap(default_value = "gossiphs-diff.json")]
-    json: String,
+    #[clap(default_value = "false")]
+    json: bool,
 }
 
 impl RelateCommand {
@@ -284,9 +286,11 @@ fn handle_obsidian(obsidian_cmd: ObsidianCommand) {
 }
 #[derive(Serialize, Deserialize)]
 struct DiffFileContext {
+    // same as git
     name: String,
     added: Vec<RelatedFileContext>,
-    removed: Vec<RelatedFileContext>,
+    deleted: Vec<RelatedFileContext>,
+    modified: Vec<RelatedFileContext>,
 }
 
 fn is_working_directory_clean(repo: &Repository) -> bool {
@@ -402,9 +406,13 @@ fn handle_diff(diff_cmd: DiffCommand) {
             .map(|item| return (item.name.clone(), item))
             .collect();
         let mut added_links: Vec<RelatedFileContext> = Vec::new();
+        let mut modified_links: Vec<RelatedFileContext> = Vec::new();
         for (_, item) in source_related_map.clone() {
             if !target_related_map.contains_key(&item.name) {
                 added_links.push(item);
+            } else {
+                // both
+                modified_links.push(item);
             }
         }
         let mut removed_links: Vec<RelatedFileContext> = Vec::new();
@@ -416,12 +424,39 @@ fn handle_diff(diff_cmd: DiffCommand) {
         ret.push(DiffFileContext {
             name: each_file,
             added: added_links,
-            removed: removed_links,
+            deleted: removed_links,
+            modified: modified_links,
         })
     }
 
-    let json = serde_json::to_string(&ret).unwrap();
-    fs::write(diff_cmd.json, json).expect("");
+    // output format
+    if diff_cmd.json {
+        let json = serde_json::to_string(&ret).unwrap();
+        println!("{}", json);
+    } else {
+        for file_context in &ret {
+            let file_name = &file_context.name;
+            let mut file_node = Tree::new(file_name.as_str());
+
+            let mut prefixed_names = Vec::new();
+            for link in &file_context.added {
+                prefixed_names.push(format!("A: {}", link.name));
+            }
+            for link in &file_context.deleted {
+                prefixed_names.push(format!("D: {}", link.name));
+            }
+            for link in &file_context.modified {
+                prefixed_names.push(format!("M: {}", link.name));
+            }
+
+            // Push the references of the prefixed names into the file_node
+            for prefixed_name in &prefixed_names {
+                file_node.push(Tree::new(prefixed_name.as_str()));
+            }
+
+            println!("{}", file_node)
+        }
+    }
 }
 
 #[test]
@@ -518,6 +553,6 @@ fn diff_test() {
         },
         target: "HEAD~10".to_string(),
         source: "HEAD".to_string(),
-        json: "gossiphs.json".to_string(),
+        json: false,
     })
 }
