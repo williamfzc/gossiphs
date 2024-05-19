@@ -113,28 +113,20 @@ gossiphs diff --json
 output:
 
 ```text
-scripts/utils/builder.js
-├── M: scripts/build.js
-├── M: src/services/config/index.ts
-├── M: scripts/utils/crx-pack/index.js
-├── M: src/ui/pages/app/app.tsx
-├── M: src/utils/_.ts
-├── M: scripts/utils/utils.js
-├── M: scripts/utils/i18n.js
-├── M: scripts/utils/manifest.js
-├── M: scripts/utils/version.js
-├── M: scripts/utils/webpack.config.js
-└── M: scripts/utils/zip-pack.js
-
-scripts/utils/manifest.js
-├── M: src/utils/_.ts
-├── M: scripts/utils/builder.js
-└── M: src/content-script/starter.ts
-
-scripts/utils/version.js
-├── M: scripts/utils/builder.js
-└── M: src/utils/_.ts
+src/services/user-info/index.ts
+├── src/background-script/driveUploader.ts (ADDED)
+├── src/background-script/task.ts (DELETED)
+├── scripts/download-config.js (DELETED)
+├── src/background-script/sdk.ts
+├── src/services/user-info/listener.ts
+├── src/services/config/index.ts
+├── src/content-script/modal.ts
+├── src/background-script/help-center.ts
 ```
+
+- ADDED: Refers to file relationships added in this diff
+- DELETED: Refers to file relationships deleted in this diff
+- Others: Refers to file relationships that were not affected by this diff and originally existed
 
 #### Obsidian Graph
 

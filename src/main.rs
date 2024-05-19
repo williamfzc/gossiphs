@@ -458,19 +458,19 @@ fn handle_diff(diff_cmd: DiffCommand) {
             let file_name = &file_context.name;
             let mut file_node = Tree::new(file_name.as_str());
 
-            let mut prefixed_names = Vec::new();
+            let mut names = Vec::new();
             for link in &file_context.added {
-                prefixed_names.push(format!("A: {}", link.name));
+                names.push(format!("{} (ADDED)", link.name));
             }
             for link in &file_context.deleted {
-                prefixed_names.push(format!("D: {}", link.name));
+                names.push(format!("{} (DELETED)", link.name));
             }
             for link in &file_context.modified {
-                prefixed_names.push(format!("M: {}", link.name));
+                names.push(format!("{}", link.name));
             }
 
             // Push the references of the prefixed names into the file_node
-            for prefixed_name in &prefixed_names {
+            for prefixed_name in &names {
                 file_node.push(Tree::new(prefixed_name.as_str()));
             }
 
