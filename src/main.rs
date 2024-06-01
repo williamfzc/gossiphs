@@ -53,6 +53,10 @@ struct CommonOptions {
     #[clap(long)]
     #[clap(default_value = "false")]
     strict: bool,
+
+    /// git commit history search depth
+    #[clap(long)]
+    depth: Option<u32>,
 }
 
 #[derive(Parser, Debug)]
@@ -168,6 +172,9 @@ fn handle_relate(relate_cmd: RelateCommand) {
     if relate_cmd.common_options.strict {
         config.def_limit = 1
     }
+    if !relate_cmd.common_options.depth.is_none() {
+        config.depth = relate_cmd.common_options.depth.unwrap();
+    }
 
     let g = Graph::from(config);
 
@@ -196,6 +203,9 @@ fn handle_interactive(interactive_cmd: InteractiveCommand) {
     config.project_path = interactive_cmd.common_options.project_path.clone();
     if interactive_cmd.common_options.strict {
         config.def_limit = 1
+    }
+    if !interactive_cmd.common_options.depth.is_none() {
+        config.depth = interactive_cmd.common_options.depth.unwrap();
     }
 
     let g = Graph::from(config);
@@ -234,6 +244,9 @@ fn handle_server(server_cmd: ServerCommand) {
     if server_cmd.common_options.strict {
         config.def_limit = 1
     }
+    if !server_cmd.common_options.depth.is_none() {
+        config.depth = server_cmd.common_options.depth.unwrap();
+    }
 
     let g = Graph::from(config);
 
@@ -249,6 +262,9 @@ fn handle_obsidian(obsidian_cmd: ObsidianCommand) {
     config.project_path = obsidian_cmd.common_options.project_path.clone();
     if obsidian_cmd.common_options.strict {
         config.def_limit = 1
+    }
+    if !obsidian_cmd.common_options.depth.is_none() {
+        config.depth = obsidian_cmd.common_options.depth.unwrap();
     }
 
     let g = Graph::from(config);
@@ -370,6 +386,10 @@ fn handle_diff(diff_cmd: DiffCommand) {
     if diff_cmd.common_options.strict {
         config.def_limit = 1
     }
+    if !diff_cmd.common_options.depth.is_none() {
+        config.depth = diff_cmd.common_options.depth.unwrap();
+    }
+
     let target_graph = Graph::from(config.clone());
 
     repo.checkout_tree(&source_object, Some(&mut builder))
@@ -485,6 +505,7 @@ fn test_handle_relate() {
         common_options: CommonOptions {
             project_path: String::from("."),
             strict: false,
+            depth: None,
         },
         file: "src/extractor.rs".to_string(),
         file_txt: "".to_string(),
@@ -500,6 +521,7 @@ fn test_handle_relate_files() {
         common_options: CommonOptions {
             project_path: String::from("."),
             strict: false,
+            depth: None,
         },
         file: "src/extractor.rs;src/main.rs;src/graph.rs".to_string(),
         file_txt: "".to_string(),
@@ -515,6 +537,7 @@ fn test_handle_relate_files_strict() {
         common_options: CommonOptions {
             project_path: String::from("."),
             strict: true,
+            depth: None,
         },
         file: "src/extractor.rs;src/rule.rs;src/main.rs;src/graph.rs".to_string(),
         file_txt: "".to_string(),
@@ -531,6 +554,7 @@ fn test_handle_relate_file_txt() {
         common_options: CommonOptions {
             project_path: String::from("."),
             strict: false,
+            depth: None,
         },
         file: "".to_string(),
         file_txt: "./aa.txt".to_string(),
@@ -547,6 +571,7 @@ fn server_test() {
         common_options: CommonOptions {
             project_path: ".".to_string(),
             strict: false,
+            depth: None,
         },
         port: 9411,
     })
@@ -559,6 +584,7 @@ fn obsidian_test() {
         common_options: CommonOptions {
             project_path: ".".to_string(),
             strict: false,
+            depth: None,
         },
         vault_dir: "./vault".to_string(),
     })
@@ -570,6 +596,7 @@ fn diff_test() {
         common_options: CommonOptions {
             project_path: ".".parse().unwrap(),
             strict: false,
+            depth: None,
         },
         target: "HEAD~10".to_string(),
         source: "HEAD".to_string(),
@@ -580,6 +607,7 @@ fn diff_test() {
         common_options: CommonOptions {
             project_path: ".".parse().unwrap(),
             strict: false,
+            depth: None,
         },
         target: "d18a5db39752d244664a23f74e174448b66b5b7e".to_string(),
         source: "HEAD".to_string(),

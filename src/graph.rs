@@ -201,7 +201,7 @@ impl Graph {
         // 1. call cupido
         // 2. extract symbols
         // 3. building def and ref relations
-        let relation_graph = create_cupido_graph(&conf.project_path);
+        let relation_graph = create_cupido_graph(&conf.project_path, conf.depth);
         let size = relation_graph.size();
         info!("relation graph ready, size: {:?}", size);
 
@@ -453,9 +453,10 @@ pub struct FileMetadata {
     pub symbols: Vec<Symbol>,
 }
 
-fn create_cupido_graph(project_path: &String) -> RelationGraph {
+fn create_cupido_graph(project_path: &String, depth: u32) -> RelationGraph {
     let mut conf = Config::default();
     conf.repo_path = project_path.parse().unwrap();
+    conf.depth = depth;
 
     let collector = get_collector();
     let graph = collector.walk(conf);
@@ -467,6 +468,9 @@ pub struct GraphConfig {
     pub project_path: String,
     pub def_limit: usize,
     pub ref_limit: usize,
+
+    // commit history search depth
+    pub depth: u32,
 }
 
 impl GraphConfig {
@@ -475,6 +479,7 @@ impl GraphConfig {
             project_path: String::from("."),
             def_limit: 4,
             ref_limit: 128,
+            depth: 10240,
         };
     }
 }
