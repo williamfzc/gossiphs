@@ -239,31 +239,6 @@ fn handle_relation(relation_cmd: RelationCommand) {
     let mut files: Vec<String> = g.files().into_iter().collect();
     files.sort();
 
-    // Create a HashMap to store relations
-    let mut relations = HashMap::new();
-
-    // Initialize the relations with 0
-    for file in &files {
-        for related_file in &files {
-            relations.insert((file.clone(), related_file.clone()), 0);
-        }
-    }
-
-    // Fill the relations with actual data
-    for file in &files {
-        let related_files = g.related_files(&file);
-        for related_file in &related_files {
-            if let Some(entry) = relations.get_mut(&(file.clone(), related_file.name.clone())) {
-                *entry = related_file.score;
-            } else {
-                panic!(
-                    "Failed to find entry for related file: {}",
-                    related_file.name
-                );
-            }
-        }
-    }
-
     // Create a new CSV writer
     let wtr_result = Writer::from_path(relation_cmd.csv);
     let mut wtr = match wtr_result {
@@ -281,12 +256,20 @@ fn handle_relation(relation_cmd: RelationCommand) {
     // Write each row
     for file in &files {
         let mut row = vec![file.clone()];
+        let related_files = g.related_files(file);
+        let related_files_map: HashMap<_, _> = related_files
+            .into_iter()
+            .map(|rf| (rf.name, rf.score))
+            .collect();
+
         for related_file in &files {
-            row.push(relations[&(file.clone(), related_file.clone())].to_string());
+            let score = related_files_map
+                .get(related_file)
+                .unwrap_or(&0)
+                .to_string();
+            row.push(score);
         }
-        if let Err(e) = wtr.write_record(&row) {
-            panic!("Failed to write CSV row for file {}: {}", file, e);
-        }
+        wtr.write_record(&row).expect("Failed to write record");
     }
 
     // Flush the writer to ensure all data is written
