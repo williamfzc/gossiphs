@@ -96,6 +96,17 @@ You can find pre-compiled files for your platform
 on [Our Release Page](https://github.com/williamfzc/gossiphs/releases). After extraction, you can use `gossiphs --help`
 to find the corresponding help.
 
+#### Export file relation matrix to csv
+
+```bash
+gossiphs relation
+gossiphs relation --csv abc.csv
+```
+
+And you can use something like [pandas](https://pandas.pydata.org/) to handle this matrix and apply further analysis without accessing the rust part.
+
+![](https://private-user-images.githubusercontent.com/13421694/335850271-3e0736a7-d630-4483-9001-8fd06bddfe0c.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3MTczMTc0MDQsIm5iZiI6MTcxNzMxNzEwNCwicGF0aCI6Ii8xMzQyMTY5NC8zMzU4NTAyNzEtM2UwNzM2YTctZDYzMC00NDgzLTkwMDEtOGZkMDZiZGRmZTBjLnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNDA2MDIlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjQwNjAyVDA4MzE0NFomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPThhNzRlMTVhYzc1MDZjMzYzZThhOTQ3ZjI1MTI1YmVjMzE3ZjE2ZGU5MGQxMGE5OWYxOTk2M2ViNmMwNmI0ZTAmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0JmFjdG9yX2lkPTAma2V5X2lkPTAmcmVwb19pZD0wIn0.Jp1ZJDL2UfWAYBIhZr5uVKhK_Hvxk1lO1g-wdMTZJZ4)
+
 #### Diff with context
 
 ```bash
