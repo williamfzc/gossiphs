@@ -48,25 +48,25 @@ jobs:
           cp ./target/debug/gossiphs ./gossiphs
           
           cd tree-sitter
-          time ../gossiphs interactive --dry
+          time ../gossiphs relation
           cd ..
           
           cd typescript-eslint
-          time ../gossiphs interactive --dry
+          time ../gossiphs relation
           cd ..
           
           cd gin
-          time ../gossiphs interactive --dry
+          time ../gossiphs relation
           cd ..
           
           cd fastapi
-          time ../gossiphs interactive --dry
+          time ../gossiphs relation
           cd ..
           
           cd lombok
-          time ../gossiphs interactive --dry
+          time ../gossiphs relation
           cd ..
           
           cd lodash
-          time ../gossiphs interactive --dry
+          time ../gossiphs relation
           cd ..

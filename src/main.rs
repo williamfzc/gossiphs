@@ -1,4 +1,5 @@
 use clap::Parser;
+use csv::Writer;
 use git2::build::CheckoutBuilder;
 use git2::{Commit, DiffOptions, Error, Object, ObjectType, Repository, Status};
 use gossiphs::graph::{Graph, GraphConfig, RelatedFileContext};
@@ -28,6 +29,9 @@ struct Cli {
 enum SubCommand {
     #[clap(name = "relate")]
     Relate(RelateCommand),
+
+    #[clap(name = "relation")]
+    Relation(RelationCommand),
 
     #[clap(name = "interactive")]
     Interactive(InteractiveCommand),
@@ -59,6 +63,17 @@ struct CommonOptions {
     depth: Option<u32>,
 }
 
+impl CommonOptions {
+    #[cfg(test)]
+    fn default() -> CommonOptions {
+        return CommonOptions {
+            project_path: String::from("."),
+            strict: false,
+            depth: None,
+        };
+    }
+}
+
 #[derive(Parser, Debug)]
 struct RelateCommand {
     #[clap(flatten)]
@@ -79,6 +94,16 @@ struct RelateCommand {
     #[clap(long)]
     #[clap(default_value = "true")]
     ignore_zero: bool,
+}
+
+#[derive(Parser, Debug)]
+struct RelationCommand {
+    #[clap(flatten)]
+    common_options: CommonOptions,
+
+    #[clap(long)]
+    #[clap(default_value = "output.csv")]
+    csv: String,
 }
 
 #[derive(Parser, Debug)]
@@ -155,6 +180,7 @@ fn main() {
 
     match cli.cmd {
         SubCommand::Relate(search_cmd) => handle_relate(search_cmd),
+        SubCommand::Relation(relation_cmd) => handle_relation(relation_cmd),
         SubCommand::Interactive(interactive_cmd) => handle_interactive(interactive_cmd),
         SubCommand::Server(server_cmd) => handle_server(server_cmd),
         SubCommand::Obsidian(obsidian_cmd) => handle_obsidian(obsidian_cmd),
@@ -195,6 +221,77 @@ fn handle_relate(relate_cmd: RelateCommand) {
         fs::write(relate_cmd.json.unwrap(), json).expect("");
     } else {
         println!("{}", json);
+    }
+}
+
+fn handle_relation(relation_cmd: RelationCommand) {
+    let mut config = GraphConfig::default();
+    config.project_path = relation_cmd.common_options.project_path.clone();
+    if relation_cmd.common_options.strict {
+        config.def_limit = 1;
+    }
+    if let Some(depth) = relation_cmd.common_options.depth {
+        config.depth = depth;
+    }
+
+    let g = Graph::from(config);
+
+    let mut files: Vec<String> = g.files().into_iter().collect();
+    files.sort();
+
+    // Create a HashMap to store relations
+    let mut relations = HashMap::new();
+
+    // Initialize the relations with 0
+    for file in &files {
+        for related_file in &files {
+            relations.insert((file.clone(), related_file.clone()), 0);
+        }
+    }
+
+    // Fill the relations with actual data
+    for file in &files {
+        let related_files = g.related_files(&file);
+        for related_file in &related_files {
+            if let Some(entry) = relations.get_mut(&(file.clone(), related_file.name.clone())) {
+                *entry = related_file.score;
+            } else {
+                panic!(
+                    "Failed to find entry for related file: {}",
+                    related_file.name
+                );
+            }
+        }
+    }
+
+    // Create a new CSV writer
+    let wtr_result = Writer::from_path(relation_cmd.csv);
+    let mut wtr = match wtr_result {
+        Ok(writer) => writer,
+        Err(e) => panic!("Failed to create CSV writer: {}", e),
+    };
+
+    // Write the header row
+    let mut header = vec!["".to_string()];
+    header.extend(files.clone());
+    if let Err(e) = wtr.write_record(&header) {
+        panic!("Failed to write CSV header: {}", e);
+    }
+
+    // Write each row
+    for file in &files {
+        let mut row = vec![file.clone()];
+        for related_file in &files {
+            row.push(relations[&(file.clone(), related_file.clone())].to_string());
+        }
+        if let Err(e) = wtr.write_record(&row) {
+            panic!("Failed to write CSV row for file {}: {}", file, e);
+        }
+    }
+
+    // Flush the writer to ensure all data is written
+    if let Err(e) = wtr.flush() {
+        panic!("Failed to flush CSV writer: {}", e);
     }
 }
 
@@ -502,11 +599,7 @@ fn handle_diff(diff_cmd: DiffCommand) {
 #[test]
 fn test_handle_relate() {
     let relate_cmd = RelateCommand {
-        common_options: CommonOptions {
-            project_path: String::from("."),
-            strict: false,
-            depth: None,
-        },
+        common_options: CommonOptions::default(),
         file: "src/extractor.rs".to_string(),
         file_txt: "".to_string(),
         json: None,
@@ -518,11 +611,7 @@ fn test_handle_relate() {
 #[test]
 fn test_handle_relate_files() {
     let relate_cmd = RelateCommand {
-        common_options: CommonOptions {
-            project_path: String::from("."),
-            strict: false,
-            depth: None,
-        },
+        common_options: CommonOptions::default(),
         file: "src/extractor.rs;src/main.rs;src/graph.rs".to_string(),
         file_txt: "".to_string(),
         json: None,
@@ -534,11 +623,7 @@ fn test_handle_relate_files() {
 #[test]
 fn test_handle_relate_files_strict() {
     let relate_cmd = RelateCommand {
-        common_options: CommonOptions {
-            project_path: String::from("."),
-            strict: true,
-            depth: None,
-        },
+        common_options: CommonOptions::default(),
         file: "src/extractor.rs;src/rule.rs;src/main.rs;src/graph.rs".to_string(),
         file_txt: "".to_string(),
         json: None,
@@ -551,11 +636,7 @@ fn test_handle_relate_files_strict() {
 #[ignore]
 fn test_handle_relate_file_txt() {
     let relate_cmd = RelateCommand {
-        common_options: CommonOptions {
-            project_path: String::from("."),
-            strict: false,
-            depth: None,
-        },
+        common_options: CommonOptions::default(),
         file: "".to_string(),
         file_txt: "./aa.txt".to_string(),
         json: None,
@@ -568,11 +649,7 @@ fn test_handle_relate_file_txt() {
 #[ignore]
 fn server_test() {
     handle_server(ServerCommand {
-        common_options: CommonOptions {
-            project_path: ".".to_string(),
-            strict: false,
-            depth: None,
-        },
+        common_options: CommonOptions::default(),
         port: 9411,
     })
 }
@@ -581,11 +658,7 @@ fn server_test() {
 #[ignore]
 fn obsidian_test() {
     handle_obsidian(ObsidianCommand {
-        common_options: CommonOptions {
-            project_path: ".".to_string(),
-            strict: false,
-            depth: None,
-        },
+        common_options: CommonOptions::default(),
         vault_dir: "./vault".to_string(),
     })
 }
@@ -593,24 +666,24 @@ fn obsidian_test() {
 #[test]
 fn diff_test() {
     handle_diff(DiffCommand {
-        common_options: CommonOptions {
-            project_path: ".".parse().unwrap(),
-            strict: false,
-            depth: None,
-        },
+        common_options: CommonOptions::default(),
         target: "HEAD~10".to_string(),
         source: "HEAD".to_string(),
         json: false,
     });
 
     handle_diff(DiffCommand {
-        common_options: CommonOptions {
-            project_path: ".".parse().unwrap(),
-            strict: false,
-            depth: None,
-        },
+        common_options: CommonOptions::default(),
         target: "d18a5db39752d244664a23f74e174448b66b5b7e".to_string(),
         source: "HEAD".to_string(),
         json: false,
     });
+}
+
+#[test]
+fn relation_test() {
+    handle_relation(RelationCommand {
+        common_options: CommonOptions::default(),
+        csv: "ok.csv".to_string(),
+    })
 }
