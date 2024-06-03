@@ -8,7 +8,7 @@ use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
@@ -156,8 +156,6 @@ impl Graph {
         file_contexts: &Vec<FileContext>,
         global_def_symbol_table: &HashMap<String, Vec<Symbol>>,
         global_ref_symbol_table: &HashMap<String, Vec<Symbol>>,
-        def_limit: usize,
-        ref_limit: usize,
     ) -> Vec<FileContext> {
         let mut filtered_file_contexts = Vec::new();
         for file_context in file_contexts {
@@ -165,17 +163,18 @@ impl Graph {
                 .symbols
                 .iter()
                 .filter(|symbol| {
+                    // ref but no def
                     if !global_def_symbol_table.contains_key(&symbol.name) {
                         return false;
                     }
-                    return global_def_symbol_table[&symbol.name].len() <= def_limit;
+                    return true;
                 })
                 .filter(|symbol| {
                     // def but no ref
                     if !global_ref_symbol_table.contains_key(&symbol.name) {
                         return true;
                     }
-                    return global_ref_symbol_table[&symbol.name].len() <= ref_limit;
+                    return true;
                 })
                 .map(|symbol| symbol.clone())
                 .collect();
@@ -217,14 +216,11 @@ impl Graph {
             &file_contexts,
             &global_def_symbol_table,
             &global_ref_symbol_table,
-            conf.def_limit,
-            conf.ref_limit,
         );
 
         // building graph
         // 1. file - symbols
-        // 2. connect defs and refs
-        // 3. priority recalculation
+        // 2. symbols - symbols
         info!("start building symbol graph ...");
         let pb = ProgressBar::new(final_file_contexts.len() as u64);
         let mut symbol_graph = SymbolGraph::new();
@@ -240,23 +236,6 @@ impl Graph {
         pb.reset();
 
         // 2
-        for file_context in &final_file_contexts {
-            pb.inc(1);
-            for symbol in &file_context.symbols {
-                if symbol.kind != SymbolKind::REF {
-                    continue;
-                }
-                // find all the related definitions, and connect to them
-                let defs = global_def_symbol_table.get(&symbol.name).unwrap();
-                for def in defs {
-                    symbol_graph.link_symbol_to_symbol(def, symbol);
-                }
-            }
-        }
-        pb.finish_and_clear();
-        pb.reset();
-
-        // 3
         // commit cache
         let mut file_commit_cache: HashMap<String, HashSet<String>> = HashMap::new();
         let mut commit_file_cache: HashMap<String, HashSet<String>> = HashMap::new();
@@ -301,6 +280,8 @@ impl Graph {
                     continue;
                 }
                 let defs = global_def_symbol_table.get(&symbol.name).unwrap();
+
+                let mut ratio_map: BTreeMap<usize, Vec<&Symbol>> = BTreeMap::new();
                 for def in defs {
                     let f = def.file.clone();
                     let ref_related_commits = related_commits(f);
@@ -327,7 +308,28 @@ impl Graph {
                             ratio += file_len - ref_files.len();
                         };
                     });
-                    symbol_graph.enhance_symbol_to_symbol(&symbol.id(), &def.id(), ratio);
+
+                    if ratio > 0 {
+                        ratio_map.entry(ratio).or_insert(Vec::new()).push(def);
+                        symbol_graph.link_symbol_to_symbol(&symbol, &def);
+                        symbol_graph.enhance_symbol_to_symbol(&symbol.id(), &def.id(), ratio);
+                    }
+                }
+
+                let mut def_count = 0;
+                for (&ratio, defs) in ratio_map.iter().rev() {
+                    for def in defs {
+                        symbol_graph.link_symbol_to_symbol(&symbol, &def);
+                        symbol_graph.enhance_symbol_to_symbol(&symbol.id(), &def.id(), ratio);
+
+                        def_count += 1;
+                        if def_count >= conf.def_limit {
+                            break;
+                        }
+                    }
+                    if def_count >= conf.def_limit {
+                        break;
+                    }
                 }
             }
         }
@@ -466,8 +468,9 @@ fn create_cupido_graph(project_path: &String, depth: u32) -> RelationGraph {
 #[derive(Clone)]
 pub struct GraphConfig {
     pub project_path: String,
+
+    // a ref can only belong to limit def
     pub def_limit: usize,
-    pub ref_limit: usize,
 
     // commit history search depth
     pub depth: u32,
@@ -477,8 +480,7 @@ impl GraphConfig {
     pub fn default() -> GraphConfig {
         return GraphConfig {
             project_path: String::from("."),
-            def_limit: 4,
-            ref_limit: 128,
+            def_limit: 1,
             depth: 10240,
         };
     }
