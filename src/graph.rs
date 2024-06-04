@@ -249,9 +249,9 @@ impl Graph {
                     .into_iter()
                     .filter(|each| {
                         // reduce the impact of large commits
-                        // large commit: edit more than 50% files once
                         return if let Some(ref_files) = commit_file_cache.get(each) {
-                            ref_files.len() < file_len / 2
+                            ref_files.len()
+                                < ((file_len as f32) * conf.commit_size_limit_ratio) as usize
                         } else {
                             let ref_files: HashSet<String> = relation_graph
                                 .commit_related_files(each)
@@ -260,7 +260,8 @@ impl Graph {
                                 .collect();
 
                             commit_file_cache.insert(each.clone(), ref_files.clone());
-                            ref_files.len() < file_len / 2
+                            ref_files.len()
+                                < ((file_len as f32) * conf.commit_size_limit_ratio) as usize
                         };
                     })
                     .into_iter()
@@ -472,6 +473,13 @@ pub struct GraphConfig {
     // a ref can only belong to limit def
     pub def_limit: usize,
 
+    // commit size limit
+    // reduce the impact of large commits
+    // large commit: edit more than xx% files once
+    // default to 1.0, do nothing
+    // set to 0.3, means 30%
+    pub commit_size_limit_ratio: f32,
+
     // commit history search depth
     pub depth: u32,
 }
@@ -481,6 +489,7 @@ impl GraphConfig {
         return GraphConfig {
             project_path: String::from("."),
             def_limit: 1,
+            commit_size_limit_ratio: 1.0,
             depth: 10240,
         };
     }
