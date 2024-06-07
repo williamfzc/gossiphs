@@ -361,6 +361,7 @@ impl Graph {
             .collect();
     }
 
+    /// All files which pointed to this file
     pub fn related_files(&self, file_name: &String) -> Vec<RelatedFileContext> {
         if !self.files().contains(file_name) {
             return Vec::new();
@@ -369,6 +370,8 @@ impl Graph {
         // find all the defs in this file
         // and tracking all the references and theirs
         let mut file_counter = HashMap::new();
+
+        // other files -> this file
         self.symbol_graph
             .list_definitions(file_name)
             .iter()
@@ -384,22 +387,10 @@ impl Graph {
                             .or_insert(*weight);
                     });
             });
-        self.symbol_graph
-            .list_references(file_name)
-            .iter()
-            .for_each(|each_ref| {
-                let defs = self
-                    .symbol_graph
-                    .list_definitions_by_reference(&each_ref.id());
 
-                defs.iter().for_each(|(each_def, weight)| {
-                    file_counter.entry(each_def.file.clone()).or_insert(0);
-                    file_counter
-                        .entry(each_def.file.clone())
-                        .and_modify(|w| *w += *weight)
-                        .or_insert(*weight);
-                })
-            });
+        // this file -> other files
+        // TODO: need it?
+
         file_counter.remove(file_name);
 
         let mut contexts = file_counter
