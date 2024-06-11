@@ -272,6 +272,17 @@ impl Graph {
             };
         };
 
+        let mut symbol_mapping: HashMap<String, usize> = HashMap::new();
+        let mut symbol_count = |f: &String, g: &SymbolGraph| -> usize {
+            return if let Some(count) = symbol_mapping.get(f) {
+                *count
+            } else {
+                let count = g.list_references(&f).len();
+                symbol_mapping.insert(f.clone(), count);
+                count
+            };
+        };
+
         let mut commit_file_cache2: HashMap<String, HashSet<String>> = HashMap::new();
         for file_context in &final_file_contexts {
             pb.inc(1);
@@ -280,6 +291,8 @@ impl Graph {
                 if symbol.kind != SymbolKind::REF {
                     continue;
                 }
+
+                // all the possible definitions of this reference
                 let defs = global_def_symbol_table.get(&symbol.name).unwrap();
 
                 let mut ratio_map: BTreeMap<usize, Vec<&Symbol>> = BTreeMap::new();
@@ -311,6 +324,15 @@ impl Graph {
                     });
 
                     if ratio > 0 {
+                        // complex file has lower ratio
+                        let ref_count_in_file = symbol_count(&def.file.clone(), &symbol_graph);
+                        if ref_count_in_file > 0 {
+                            ratio = ratio / ref_count_in_file;
+                        }
+                        if ratio == 0 {
+                            ratio = 1;
+                        }
+
                         ratio_map.entry(ratio).or_insert(Vec::new()).push(def);
                     }
                 }
