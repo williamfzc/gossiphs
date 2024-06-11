@@ -312,8 +312,6 @@ impl Graph {
 
                     if ratio > 0 {
                         ratio_map.entry(ratio).or_insert(Vec::new()).push(def);
-                        symbol_graph.link_symbol_to_symbol(&symbol, &def);
-                        symbol_graph.enhance_symbol_to_symbol(&symbol.id(), &def.id(), ratio);
                     }
                 }
 
