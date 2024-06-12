@@ -161,6 +161,9 @@ export interface ClickEvent {
   commentIds: string[];
 }
 
+export const loadUrlWebSDKResource = async () => {
+}
+
 function abc() {};
 
 class NumbersManager {

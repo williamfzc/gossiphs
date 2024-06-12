@@ -35,6 +35,7 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (export_specifier (identifier) @exported_symbol)
 (interface_declaration name: (type_identifier) @exported_symbol)
 (class_declaration name: (type_identifier) @exported_symbol)
+(variable_declarator name: (identifier) @exported_symbol)
 "#,
         },
 
