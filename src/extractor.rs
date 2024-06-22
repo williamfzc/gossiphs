@@ -229,6 +229,10 @@ func injectV1Group(v1group *gin.RouterGroup) {
 	// scope
 	scopeGroup := v1group.Group("/")
 }
+
+const a = "1"
+var b = "2"
+type c = d
             "#,
             ),
         );

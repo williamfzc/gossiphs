@@ -46,6 +46,10 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
             export_grammar: r#"
 (function_declaration name: (identifier) @exported_symbol)
 (method_declaration name: (field_identifier) @exported_symbol)
+(type_alias name: (type_identifier) @exported_symbol)
+(type_spec name: (type_identifier) @exported_symbol)
+(const_spec name: (identifier) @exported_symbol)
+(var_spec name: (identifier) @exported_symbol)
 "#,
         },
 
