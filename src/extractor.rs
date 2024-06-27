@@ -26,6 +26,11 @@ impl Extractor {
             Extractor::Go => {
                 let lang = &tree_sitter_go::language();
                 self._extract(f, s, lang)
+                    .into_iter()
+                    .filter(|each| {
+                        return each.name != "_";
+                    })
+                    .collect()
             }
             Extractor::Python => {
                 let lang = &tree_sitter_python::language();

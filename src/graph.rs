@@ -26,7 +26,11 @@ pub struct Graph {
 }
 
 impl Graph {
-    fn extract_file_context(file_name: &String, file_path: &String) -> Option<FileContext> {
+    fn extract_file_context(
+        file_name: &String,
+        file_path: &String,
+        symbol_limit: usize,
+    ) -> Option<FileContext> {
         let file_extension = match file_name.split('.').last() {
             Some(ext) => ext.to_lowercase(),
             None => {
@@ -59,7 +63,13 @@ impl Graph {
                 Some(file_context)
             }
             "go" => {
-                let symbols = Extractor::Go.extract(file_name, file_content);
+                let mut symbols = Extractor::Go.extract(file_name, file_content);
+                if symbols.len() > symbol_limit {
+                    symbols = symbols
+                        .into_iter()
+                        .filter(|each| each.name.chars().next().unwrap().is_uppercase())
+                        .collect();
+                }
                 let file_context = FileContext {
                     // use the relative path as key
                     path: file_name.clone(),
@@ -98,7 +108,11 @@ impl Graph {
         };
     }
 
-    fn extract_file_contexts(root: &String, files: Vec<String>) -> Vec<FileContext> {
+    fn extract_file_contexts(
+        root: &String,
+        files: Vec<String>,
+        symbol_limit: usize,
+    ) -> Vec<FileContext> {
         let filtered_files: Vec<(String, String)> = files
             .iter()
             .filter_map(|each_file| {
@@ -118,7 +132,7 @@ impl Graph {
             .par_iter()
             .map(|(each_file, file_path)| {
                 pb.inc(1);
-                return Graph::extract_file_context(each_file, file_path);
+                return Graph::extract_file_context(each_file, file_path, symbol_limit);
             })
             .filter(|ctx| ctx.is_some())
             .map(|ctx| ctx.unwrap())
@@ -206,7 +220,8 @@ impl Graph {
 
         let files = relation_graph.files();
         let file_len = files.len();
-        let file_contexts = Self::extract_file_contexts(&conf.project_path, files);
+        let file_contexts =
+            Self::extract_file_contexts(&conf.project_path, files, conf.symbol_limit);
         info!("symbol extract finished, files: {}", file_contexts.len());
 
         // filter pointless REF
@@ -493,6 +508,9 @@ pub struct GraphConfig {
 
     // commit history search depth
     pub depth: u32,
+
+    // symbol limit of each file
+    pub symbol_limit: usize,
 }
 
 impl GraphConfig {
@@ -502,6 +520,7 @@ impl GraphConfig {
             def_limit: 1,
             commit_size_limit_ratio: 1.0,
             depth: 10240,
+            symbol_limit: 4096,
         };
     }
 }
