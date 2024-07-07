@@ -471,7 +471,7 @@ dependencies = [
 
 [[package]]
 name = "gossiphs"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "axum",
  "cc",
