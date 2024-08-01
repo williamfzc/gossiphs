@@ -45,6 +45,8 @@ jobs:
           git clone https://github.com/lodash/lodash --depth 128
           # kotlin
           git clone https://github.com/android/nowinandroid --depth 128
+          # swift
+          git clone https://github.com/SwiftyJSON/SwiftyJSON --depth 128
           
           # execute bin
           cp ./target/debug/gossiphs ./gossiphs

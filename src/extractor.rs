@@ -11,6 +11,7 @@ pub enum Extractor {
     JavaScript,
     Java,
     Kotlin,
+    Swift,
 }
 
 impl Extractor {
@@ -47,6 +48,10 @@ impl Extractor {
             }
             Extractor::Kotlin => {
                 let lang = &tree_sitter_kotlin::language();
+                self._extract(f, s, lang)
+            }
+            Extractor::Swift => {
+                let lang = &tree_sitter_swift::language();
                 self._extract(f, s, lang)
             }
         };
@@ -402,6 +407,48 @@ private suspend fun <T> suspendRunCatching(block: suspend () -> T): Result<T> = 
         exception,
     )
     Result.failure(exception)
+}
+            "#,
+            ),
+        );
+        symbols.iter().for_each(|each| {
+            info!("symbol: {:?}", each);
+        })
+    }
+
+    #[test]
+    fn extract_swift() {
+        let symbols = Extractor::Swift.extract(
+            &String::from("abc"),
+            &String::from(
+                r#"
+import UIKit
+import SwiftyJSON
+
+@UIApplicationMain
+class AppDelegate: UIResponder, UIApplicationDelegate {
+
+    var window: UIWindow?
+
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+
+        let navigationController = self.window?.rootViewController as! UINavigationController
+        let viewController = navigationController.topViewController as! ViewController
+
+        if let file = Bundle.main.path(forResource: "SwiftyJSONTests", ofType: "json") {
+            do {
+                let data = try Data(contentsOf: URL(fileURLWithPath: file))
+                let json = try JSON(data: data)
+                viewController.json = json
+            } catch {
+                viewController.json = JSON.null
+            }
+        } else {
+            viewController.json = JSON.null
+        }
+
+        return true
+    }
 }
             "#,
             ),

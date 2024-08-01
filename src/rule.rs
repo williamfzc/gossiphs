@@ -75,6 +75,7 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
             import_grammar: r#"
 ((identifier) @variable_name)
   "#,
+            // todo: not enough maybe
             export_grammar: r#"
 (class_declaration name: (identifier) @exported_symbol)
   "#,
@@ -87,6 +88,16 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
             export_grammar: r#"
 (class_declaration (type_identifier) @exported_symbol)
 (function_declaration (simple_identifier) @exported_symbol)
+  "#,
+        },
+
+        Extractor::Swift => Rule {
+            import_grammar: r#"
+((simple_identifier) @exported_symbol)
+  "#,
+            // TODO: not enough
+            export_grammar: r#"
+(function_declaration (simple_identifier) @method)
   "#,
         },
     }
