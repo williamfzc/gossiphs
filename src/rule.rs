@@ -73,10 +73,20 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
         },
         Extractor::Java => Rule {
             import_grammar: r#"
-(variable_declarator (identifier) @variable_name)
+((identifier) @variable_name)
   "#,
             export_grammar: r#"
 (class_declaration name: (identifier) @exported_symbol)
+  "#,
+        },
+
+        Extractor::Kotlin => Rule {
+            import_grammar: r#"
+(identifier (simple_identifier) @variable_name)
+  "#,
+            export_grammar: r#"
+(class_declaration (type_identifier) @exported_symbol)
+(function_declaration (simple_identifier) @exported_symbol)
   "#,
         },
     }

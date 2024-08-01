@@ -10,6 +10,7 @@ pub enum Extractor {
     Python,
     JavaScript,
     Java,
+    Kotlin,
 }
 
 impl Extractor {
@@ -42,6 +43,10 @@ impl Extractor {
             }
             Extractor::Java => {
                 let lang = &tree_sitter_javascript::language();
+                self._extract(f, s, lang)
+            }
+            Extractor::Kotlin => {
+                let lang = &tree_sitter_kotlin::language();
                 self._extract(f, s, lang)
             }
         };
@@ -354,6 +359,49 @@ public class Example {
 	public static void hello() {
 		System.out.println(Futures.immediateCancelledFuture());
 	}
+}
+            "#,
+            ),
+        );
+        symbols.iter().for_each(|each| {
+            info!("symbol: {:?}", each);
+        })
+    }
+
+    #[test]
+    fn extract_kt() {
+        let symbols = Extractor::Kotlin.extract(
+            &String::from("abc"),
+            &String::from(
+                r#"
+package com.google.samples.apps.nowinandroid.core.data
+
+import android.util.Log
+import com.google.samples.apps.nowinandroid.core.datastore.ChangeListVersions
+import com.google.samples.apps.nowinandroid.core.network.model.NetworkChangeList
+import kotlin.coroutines.cancellation.CancellationException
+
+interface Synchronizer {
+    suspend fun getChangeListVersions(): ChangeListVersions
+    suspend fun updateChangeListVersions(update: ChangeListVersions.() -> ChangeListVersions)
+    suspend fun Syncable.sync() = this@sync.syncWith(this@Synchronizer)
+}
+
+interface Syncable {
+    suspend fun syncWith(synchronizer: Synchronizer): Boolean
+}
+
+private suspend fun <T> suspendRunCatching(block: suspend () -> T): Result<T> = try {
+    Result.success(block())
+} catch (cancellationException: CancellationException) {
+    throw cancellationException
+} catch (exception: Exception) {
+    Log.i(
+        "suspendRunCatching",
+        "Failed to evaluate a suspendRunCatchingBlock. Returning failure Result",
+        exception,
+    )
+    Result.failure(exception)
 }
             "#,
             ),
