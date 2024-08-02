@@ -60,7 +60,7 @@ impl Extractor {
     fn _extract(&self, f: &String, s: &String, language: &Language) -> Vec<Symbol> {
         let mut parser = Parser::new();
         parser
-            .set_language(*language)
+            .set_language(language)
             .expect("Error loading grammar");
         let tree = parser.parse(s, None).unwrap();
 
@@ -70,7 +70,7 @@ impl Extractor {
 
         // defs
         {
-            let query = Query::new(*language, rule.export_grammar).unwrap();
+            let query = Query::new(language, rule.export_grammar).unwrap();
             let mut cursor = QueryCursor::new();
             let matches = cursor.matches(&query, tree.root_node(), s.as_bytes());
             for mat in matches {
@@ -88,7 +88,7 @@ impl Extractor {
 
         // refs
         {
-            let query = Query::new(*language, rule.import_grammar).unwrap();
+            let query = Query::new(language, rule.import_grammar).unwrap();
             let mut cursor = QueryCursor::new();
             let matches = cursor.matches(&query, tree.root_node(), s.as_bytes());
             for mat in matches {
