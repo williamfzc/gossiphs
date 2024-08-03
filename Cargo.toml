@@ -1,6 +1,6 @@
 [package]
 name = "gossiphs"
-version = "0.5.2"
+version = "0.6.0"
 edition = "2021"
 description = "A Rust lib for general code file relationship analysis. Based on tree-sitter and git analysis."
 license = "Apache-2.0"
