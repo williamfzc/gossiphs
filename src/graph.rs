@@ -425,25 +425,28 @@ impl Graph {
         let mut file_counter = HashMap::new();
 
         // other files -> this file
-        self.symbol_graph
-            .list_definitions(file_name)
-            .iter()
-            .for_each(|def| {
-                self.symbol_graph
-                    .list_references_by_definition(&def.id())
-                    .iter()
-                    .for_each(|(each_ref, weight)| {
-                        file_counter.entry(each_ref.file.clone()).or_insert(0);
-                        file_counter
-                            .entry(each_ref.file.clone())
-                            .and_modify(|w| *w += *weight)
-                            .or_insert(*weight);
-                    });
-            });
+        let definitions_in_file = self.symbol_graph.list_definitions(file_name);
+        let definition_count = definitions_in_file.len();
+
+        definitions_in_file.iter().for_each(|def| {
+            self.symbol_graph
+                .list_references_by_definition(&def.id())
+                .iter()
+                .for_each(|(each_ref, weight)| {
+                    let real_weight = weight / definition_count;
+
+                    file_counter.entry(each_ref.file.clone()).or_insert(0);
+                    file_counter
+                        .entry(each_ref.file.clone())
+                        .and_modify(|w| *w += real_weight)
+                        .or_insert(real_weight);
+                });
+        });
 
         // this file -> other files
         // TODO: need it?
 
+        // remove itself
         file_counter.remove(file_name);
 
         let mut contexts = file_counter
