@@ -433,7 +433,7 @@ impl Graph {
                 .list_references_by_definition(&def.id())
                 .iter()
                 .for_each(|(each_ref, weight)| {
-                    let real_weight = weight / definition_count;
+                    let real_weight = std::cmp::max(weight / definition_count, 1);
 
                     file_counter.entry(each_ref.file.clone()).or_insert(0);
                     file_counter
