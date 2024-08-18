@@ -16,7 +16,7 @@ pub enum Extractor {
 
 impl Extractor {
     pub fn extract(&self, f: &String, s: &String) -> Vec<Symbol> {
-        return match self {
+        match self {
             Extractor::Rust => {
                 let lang = &tree_sitter_rust::language();
                 self._extract(f, s, lang)
@@ -54,7 +54,7 @@ impl Extractor {
                 let lang = &tree_sitter_swift::language();
                 self._extract(f, s, lang)
             }
-        };
+        }
     }
 
     fn _extract(&self, f: &String, s: &String, language: &Language) -> Vec<Symbol> {
@@ -106,7 +106,7 @@ impl Extractor {
             }
         }
 
-        return ret;
+        ret
     }
 }
 

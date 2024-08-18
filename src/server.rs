@@ -26,7 +26,7 @@ pub async fn server_main(server_conf: ServerConfig) {
 }
 
 pub fn create_router() -> Router {
-    return Router::new()
+    Router::new()
         .nest(
             "/file",
             Router::new()
@@ -40,7 +40,7 @@ pub fn create_router() -> Router {
                 .route("/relation", get(symbol_relation_handler))
                 .route("/metadata", get(symbol_metadata_handler)),
         )
-        .route("/", get(root_handler));
+        .route("/", get(root_handler))
 }
 
 pub struct ServerConfig {
@@ -50,10 +50,10 @@ pub struct ServerConfig {
 
 impl ServerConfig {
     pub fn new(g: Graph) -> ServerConfig {
-        return ServerConfig {
+        ServerConfig {
             port: 9411,
             graph: g,
-        };
+        }
     }
 }
 
@@ -86,19 +86,19 @@ struct SymbolIdParams {
 
 async fn file_metadata_handler(Query(params): Query<FileParams>) -> axum::Json<FileMetadata> {
     let g = GRAPH_INST.read().unwrap();
-    return axum::Json(g.file_metadata(&params.path));
+    axum::Json(g.file_metadata(&params.path))
 }
 
 async fn file_relation_handler(
     Query(params): Query<FileParams>,
 ) -> axum::Json<Vec<RelatedFileContext>> {
     let g = GRAPH_INST.read().unwrap();
-    return axum::Json(g.related_files(&params.path));
+    axum::Json(g.related_files(&params.path))
 }
 
 async fn file_list_handler() -> axum::Json<HashSet<String>> {
     let g = GRAPH_INST.read().unwrap();
-    return axum::Json(g.files());
+    axum::Json(g.files())
 }
 
 async fn symbol_relation_handler(
@@ -128,7 +128,7 @@ async fn symbol_relation_handler(
             return (key.id(), value);
         })
         .collect();
-    return axum::Json(str_symbol_map);
+    axum::Json(str_symbol_map)
 }
 
 async fn symbol_metadata_handler(
@@ -140,7 +140,7 @@ async fn symbol_metadata_handler(
         return axum::Json(None);
     }
 
-    return axum::Json(Option::from(
+    axum::Json(Option::from(
         g.symbol_graph.g[*ret.unwrap()].get_symbol().unwrap(),
-    ));
+    ))
 }

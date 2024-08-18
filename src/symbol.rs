@@ -38,7 +38,7 @@ pub struct RangeWrapper {
 
 impl RangeWrapper {
     pub fn from(range: Range) -> RangeWrapper {
-        return RangeWrapper {
+        RangeWrapper {
             start_byte: range.start_byte,
             end_byte: range.end_byte,
             start_point: Point {
@@ -49,31 +49,31 @@ impl RangeWrapper {
                 row: range.end_point.row,
                 column: range.end_point.column,
             },
-        };
+        }
     }
 }
 
 impl Symbol {
     pub fn new_def(file: String, name: String, range: Range) -> Symbol {
-        return Symbol {
+        Symbol {
             file,
             name,
             kind: SymbolKind::DEF,
             range: RangeWrapper::from(range),
-        };
+        }
     }
 
     pub fn new_ref(file: String, name: String, range: Range) -> Symbol {
-        return Symbol {
+        Symbol {
             file,
             name,
             kind: SymbolKind::REF,
             range: RangeWrapper::from(range),
-        };
+        }
     }
 
     pub fn id(&self) -> String {
-        return format!("{}{}", self.file, self.range.start_byte);
+        format!("{}{}", self.file, self.range.start_byte)
     }
 }
 
@@ -103,9 +103,7 @@ pub struct NodeData {
 impl NodeData {
     pub fn get_symbol(&self) -> Option<Symbol> {
         match &self.node_type {
-            NodeType::Symbol(symbol_data) => {
-                return Some(symbol_data.symbol.clone());
-            }
+            NodeType::Symbol(symbol_data) => Some(symbol_data.symbol.clone()),
             _ => None,
         }
     }
@@ -119,11 +117,11 @@ pub struct SymbolGraph {
 
 impl SymbolGraph {
     pub fn new() -> SymbolGraph {
-        return SymbolGraph {
+        SymbolGraph {
             file_mapping: HashMap::new(),
             symbol_mapping: HashMap::new(),
             g: UnGraph::<NodeData, usize>::new_undirected(),
-        };
+        }
     }
 
     pub(crate) fn add_file(&mut self, name: &String) {
@@ -191,8 +189,7 @@ impl SymbolGraph {
 // Read API
 impl SymbolGraph {
     fn neighbor_symbols(&self, idx: NodeIndex) -> HashMap<Symbol, usize> {
-        return self
-            .g
+        self.g
             .edges(idx)
             .filter_map(|edge| {
                 let target_idx = edge.target();
@@ -204,7 +201,7 @@ impl SymbolGraph {
                     None
                 };
             })
-            .collect();
+            .collect()
     }
 
     pub fn list_symbols(&self, file_name: &String) -> Vec<Symbol> {
@@ -213,27 +210,24 @@ impl SymbolGraph {
         }
 
         let file_index = self.file_mapping.get(file_name).unwrap();
-        return self
-            .neighbor_symbols(*file_index)
+        self.neighbor_symbols(*file_index)
             .keys()
             .map(|each| each.clone())
-            .collect();
+            .collect()
     }
 
     pub fn list_definitions(&self, file_name: &String) -> Vec<Symbol> {
-        return self
-            .list_symbols(file_name)
+        self.list_symbols(file_name)
             .into_iter()
             .filter(|symbol| symbol.kind == SymbolKind::DEF)
-            .collect();
+            .collect()
     }
 
     pub fn list_references(&self, file_name: &String) -> Vec<Symbol> {
-        return self
-            .list_symbols(file_name)
+        self.list_symbols(file_name)
             .into_iter()
             .filter(|symbol| symbol.kind == SymbolKind::REF)
-            .collect();
+            .collect()
     }
 
     pub fn list_references_by_definition(&self, symbol_id: &String) -> HashMap<Symbol, usize> {
@@ -242,7 +236,7 @@ impl SymbolGraph {
         }
 
         let def_index = self.symbol_mapping.get(symbol_id).unwrap();
-        return self.neighbor_symbols(*def_index);
+        self.neighbor_symbols(*def_index)
     }
 
     pub fn list_definitions_by_reference(&self, symbol_id: &String) -> HashMap<Symbol, usize> {
@@ -252,6 +246,6 @@ impl SymbolGraph {
         }
 
         let ref_index = self.symbol_mapping.get(symbol_id).unwrap();
-        return self.neighbor_symbols(*ref_index);
+        self.neighbor_symbols(*ref_index)
     }
 }

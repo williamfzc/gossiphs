@@ -461,11 +461,11 @@ impl Graph {
             })
             .collect::<Vec<_>>();
         contexts.sort_by_key(|context| Reverse(context.score));
-        return contexts;
+        contexts
     }
 
     pub fn related_symbols(&self, symbol: &Symbol) -> HashMap<Symbol, usize> {
-        return match symbol.kind {
+        match symbol.kind {
             SymbolKind::DEF => self
                 .symbol_graph
                 .list_references_by_definition(&symbol.id())
@@ -476,7 +476,7 @@ impl Graph {
                 .list_definitions_by_reference(&symbol.id())
                 .into_iter()
                 .collect(),
-        };
+        }
     }
 
     pub fn file_metadata(&self, file_name: &String) -> FileMetadata {
@@ -486,7 +486,7 @@ impl Graph {
             .iter()
             .cloned()
             .collect();
-        return FileMetadata { symbols };
+        FileMetadata { symbols }
     }
 }
 
@@ -510,7 +510,7 @@ fn create_cupido_graph(project_path: &String, depth: u32) -> RelationGraph {
 
     let collector = get_collector();
     let graph = collector.walk(conf);
-    return graph;
+    graph
 }
 
 #[derive(Clone)]
