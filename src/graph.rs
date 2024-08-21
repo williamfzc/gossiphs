@@ -43,7 +43,7 @@ impl Graph {
         if file_content.is_empty() {
             return None;
         }
-        return match file_extension.as_str() {
+        match file_extension.as_str() {
             "rs" => {
                 let symbols = Extractor::Rust.extract(file_name, file_content);
                 let file_context = FileContext {
@@ -123,7 +123,7 @@ impl Graph {
                 Some(file_context)
             }
             _ => None,
-        };
+        }
     }
 
     fn extract_file_contexts(
@@ -181,7 +181,7 @@ impl Graph {
                         .push(symbol.clone());
                 }
             });
-        return (global_def_symbol_table, global_ref_symbol_table);
+        (global_def_symbol_table, global_ref_symbol_table)
     }
 
     fn filter_pointless_symbols(
@@ -220,11 +220,11 @@ impl Graph {
     }
 
     pub fn empty() -> Graph {
-        return Graph {
+        Graph {
             file_contexts: Vec::new(),
             _relation_graph: RelationGraph::new(),
             symbol_graph: SymbolGraph::new(),
-        };
+        }
     }
 
     pub fn from(conf: GraphConfig) -> Graph {
@@ -396,22 +396,22 @@ impl Graph {
         );
         info!("total time cost: {:?}", start_time.elapsed());
 
-        return Graph {
+        Graph {
             file_contexts,
             _relation_graph: relation_graph,
             symbol_graph,
-        };
+        }
     }
 }
 
 // Read API
 impl Graph {
     pub fn files(&self) -> HashSet<String> {
-        return self
+        self
             .file_contexts
             .iter()
             .map(|each| each.path.clone())
-            .collect();
+            .collect()
     }
 
     /// All files which pointed to this file
@@ -536,13 +536,13 @@ pub struct GraphConfig {
 
 impl GraphConfig {
     pub fn default() -> GraphConfig {
-        return GraphConfig {
+        GraphConfig {
             project_path: String::from("."),
             def_limit: 1,
             commit_size_limit_ratio: 1.0,
             depth: 10240,
             symbol_limit: 4096,
-        };
+        }
     }
 }
 

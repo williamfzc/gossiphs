@@ -66,11 +66,11 @@ struct CommonOptions {
 impl CommonOptions {
     #[cfg(test)]
     fn default() -> CommonOptions {
-        return CommonOptions {
+        CommonOptions {
             project_path: String::from("."),
             strict: false,
             depth: None,
-        };
+        }
     }
 }
 
@@ -171,7 +171,7 @@ impl RelateCommand {
                 .map(|each| each.to_string())
                 .collect();
         }
-        return self.file.split(';').map(|each| each.to_string()).collect();
+        self.file.split(';').map(|each| each.to_string()).collect()
     }
 }
 
