@@ -333,40 +333,45 @@ impl Graph {
                     let f = def.file.clone();
                     let ref_related_commits = related_commits(f);
                     // calc the diff of two set
-                    let intersection: HashSet<String> = ref_related_commits
+                    let commit_intersection: HashSet<String> = ref_related_commits
                         .intersection(&def_related_commits)
                         .cloned()
                         .collect();
 
-                    let mut ratio = 0;
-                    intersection.iter().for_each(|each| {
+                    let mut ratio = 0.0;
+                    commit_intersection.iter().for_each(|each_commit| {
                         // different range commits should have different scores
                         // large commit has less score
 
-                        if let Some(ref_files) = commit_file_cache2.get(each) {
-                            ratio += file_len - ref_files.len();
+                        // how many files has been referenced
+                        if let Some(commit_ref_files) = commit_file_cache2.get(each_commit) {
+                            ratio += (file_len - commit_ref_files.len()) as f64 / (file_len as f64);
                         } else {
-                            let ref_files: HashSet<String> = relation_graph
-                                .commit_related_files(each)
+                            let commit_ref_files: HashSet<String> = relation_graph
+                                .commit_related_files(each_commit)
                                 .unwrap()
                                 .into_iter()
                                 .collect();
-                            commit_file_cache2.insert(each.clone(), ref_files.clone());
-                            ratio += file_len - ref_files.len();
+                            commit_file_cache2
+                                .insert(each_commit.clone(), commit_ref_files.clone());
+                            ratio += (file_len - commit_ref_files.len()) as f64 / (file_len as f64);
                         };
                     });
 
-                    if ratio > 0 {
+                    if ratio > 0.0 {
                         // complex file has lower ratio
                         let ref_count_in_file = symbol_count(&def.file.clone(), &symbol_graph);
                         if ref_count_in_file > 0 {
-                            ratio = ratio / ref_count_in_file;
+                            ratio = ratio / ref_count_in_file as f64;
                         }
-                        if ratio == 0 {
-                            ratio = 1;
+                        if ratio < 1.0 {
+                            ratio = 1.0;
                         }
 
-                        ratio_map.entry(ratio).or_insert(Vec::new()).push(def);
+                        ratio_map
+                            .entry(ratio as usize)
+                            .or_insert(Vec::new())
+                            .push(def);
                     }
                 }
 
@@ -407,8 +412,7 @@ impl Graph {
 // Read API
 impl Graph {
     pub fn files(&self) -> HashSet<String> {
-        self
-            .file_contexts
+        self.file_contexts
             .iter()
             .map(|each| each.path.clone())
             .collect()
