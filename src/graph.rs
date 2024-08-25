@@ -409,6 +409,12 @@ impl Graph {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RelatedSymbol {
+    symbol: Symbol,
+    weight: usize,
+}
+
 // Read API
 impl Graph {
     pub fn files(&self) -> HashSet<String> {
@@ -427,6 +433,7 @@ impl Graph {
         // find all the defs in this file
         // and tracking all the references and theirs
         let mut file_counter = HashMap::new();
+        let mut file_ref_mapping: HashMap<String, Vec<RelatedSymbol>> = HashMap::new();
 
         // other files -> this file
         let definitions_in_file = self.symbol_graph.list_definitions(file_name);
@@ -444,6 +451,19 @@ impl Graph {
                         .entry(each_ref.file.clone())
                         .and_modify(|w| *w += real_weight)
                         .or_insert(real_weight);
+
+                    file_ref_mapping
+                        .entry(each_ref.file.clone())
+                        .and_modify(|v| {
+                            v.push(RelatedSymbol {
+                                symbol: each_ref.clone(),
+                                weight: real_weight,
+                            })
+                        })
+                        .or_insert(vec![RelatedSymbol {
+                            symbol: each_ref.clone(),
+                            weight: real_weight,
+                        }]);
                 });
         });
 
@@ -456,11 +476,13 @@ impl Graph {
         let mut contexts = file_counter
             .iter()
             .map(|(k, v)| {
+                let related_symbols = file_ref_mapping[k].clone();
                 return RelatedFileContext {
                     name: k.clone(),
                     score: *v,
                     defs: self.symbol_graph.list_definitions(k).len(),
                     refs: self.symbol_graph.list_references(k).len(),
+                    related_symbols,
                 };
             })
             .collect::<Vec<_>>();
@@ -500,6 +522,7 @@ pub struct RelatedFileContext {
     pub score: usize,
     pub defs: usize,
     pub refs: usize,
+    pub related_symbols: Vec<RelatedSymbol>,
 }
 
 #[derive(Serialize, Deserialize)]
