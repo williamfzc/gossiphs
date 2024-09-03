@@ -2,7 +2,7 @@ use crate::extractor::Extractor;
 use crate::symbol::{Symbol, SymbolGraph, SymbolKind};
 use cupido::collector::config::Collect;
 use cupido::collector::config::{get_collector, Config};
-use cupido::relation::graph::RelationGraph;
+use cupido::relation::graph::RelationGraph as CupidoRelationGraph;
 use indicatif::ProgressBar;
 use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 pub struct FileContext {
     pub path: String,
@@ -21,7 +21,7 @@ pub struct FileContext {
 
 pub struct Graph {
     pub(crate) file_contexts: Vec<FileContext>,
-    pub(crate) _relation_graph: RelationGraph,
+    pub(crate) _relation_graph: CupidoRelationGraph,
     pub(crate) symbol_graph: SymbolGraph,
 }
 
@@ -154,6 +154,7 @@ impl Graph {
             })
             .filter(|ctx| ctx.is_some())
             .map(|ctx| ctx.unwrap())
+            .filter(|ctx| ctx.symbols.len() < symbol_limit)
             .collect();
         pb.finish_and_clear();
         file_contexts
@@ -222,7 +223,7 @@ impl Graph {
     pub fn empty() -> Graph {
         Graph {
             file_contexts: Vec::new(),
-            _relation_graph: RelationGraph::new(),
+            _relation_graph: CupidoRelationGraph::new(),
             symbol_graph: SymbolGraph::new(),
         }
     }
@@ -560,7 +561,7 @@ pub struct FileMetadata {
     pub symbols: Vec<Symbol>,
 }
 
-fn create_cupido_graph(project_path: &String, depth: u32) -> RelationGraph {
+fn create_cupido_graph(project_path: &String, depth: u32) -> CupidoRelationGraph {
     let mut conf = Config::default();
     conf.repo_path = project_path.parse().unwrap();
     conf.depth = depth;
@@ -687,8 +688,7 @@ mod tests {
     }
 
     #[test]
-    fn paths() {
-        tracing_subscriber::fmt::init();
+    fn between_files() {
         let mut config = GraphConfig::default();
         config.project_path = String::from(".");
         let g = Graph::from(config);
