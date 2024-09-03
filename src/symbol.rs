@@ -1,9 +1,11 @@
+use petgraph::algo::all_simple_paths;
 use petgraph::graph::{NodeIndex, UnGraph};
 use petgraph::prelude::EdgeRef;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
+use tracing::info;
 use tree_sitter::Range;
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -248,4 +250,39 @@ impl SymbolGraph {
         let ref_index = self.symbol_mapping.get(symbol_id).unwrap();
         self.neighbor_symbols(*ref_index)
     }
+
+    pub fn file_paths(&self, src_file: &String, dst_file: &String) -> Vec<DefRefPair> {
+        if let (Some(src_index), Some(dst_index)) = (
+            self.file_mapping.get(src_file),
+            self.file_mapping.get(dst_file),
+        ) {
+            // file -> symbol -> symbol -> file
+            // so at most 2
+            let pairs: Vec<_> =
+                all_simple_paths::<Vec<_>, _>(&self.g, *src_index, *dst_index, 1, Some(2))
+                    .filter(|each| each.len() > 0)
+                    .map(|each| DefRefPair {
+                        src_symbol: self.g[each[1]].get_symbol().unwrap().clone(),
+                        dst_symbol: self.g[each[2]].get_symbol().unwrap().clone(),
+                    })
+                    .collect();
+            pairs.iter().for_each(|pair| {
+                info!(
+                    "{} {} -> {} {}",
+                    pair.src_symbol.file,
+                    pair.src_symbol.name,
+                    pair.dst_symbol.file,
+                    pair.dst_symbol.name
+                );
+            });
+        }
+
+        // fallback
+        vec![]
+    }
+}
+
+pub struct DefRefPair {
+    pub src_symbol: Symbol,
+    pub dst_symbol: Symbol,
 }

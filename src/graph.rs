@@ -545,6 +545,10 @@ impl Graph {
             .collect();
         FileMetadata { symbols }
     }
+
+    pub fn file_paths(&self, src_file: &String, dst_file: &String) {
+        self.symbol_graph.file_paths(src_file, dst_file);
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -699,5 +703,17 @@ mod tests {
         symbols.iter().for_each(|item| {
             info!("{:?}: {}", item.symbol, item.weight);
         });
+    }
+
+    #[test]
+    fn paths() {
+        tracing_subscriber::fmt::init();
+        let mut config = GraphConfig::default();
+        config.project_path = String::from(".");
+        let g = Graph::from(config);
+        let symbols = g.file_paths(
+            &String::from("src/extractor.rs"),
+            &String::from("src/graph.rs"),
+        );
     }
 }
