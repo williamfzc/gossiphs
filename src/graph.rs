@@ -1,5 +1,5 @@
 use crate::extractor::Extractor;
-use crate::symbol::{Symbol, SymbolGraph, SymbolKind};
+use crate::symbol::{DefRefPair, Symbol, SymbolGraph, SymbolKind};
 use cupido::collector::config::Collect;
 use cupido::collector::config::{get_collector, Config};
 use cupido::relation::graph::RelationGraph as CupidoRelationGraph;
@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 pub struct FileContext {
     pub path: String,
@@ -546,8 +546,8 @@ impl Graph {
         FileMetadata { symbols }
     }
 
-    pub fn file_paths(&self, src_file: &String, dst_file: &String) {
-        self.symbol_graph.file_paths(src_file, dst_file);
+    pub fn pairs_between_files(&self, src_file: &String, dst_file: &String) -> Vec<DefRefPair> {
+        self.symbol_graph.pairs_between_files(src_file, dst_file)
     }
 }
 
@@ -611,6 +611,7 @@ impl GraphConfig {
 #[cfg(test)]
 mod tests {
     use crate::graph::{Graph, GraphConfig};
+    use crate::symbol::DefRefPair;
     use petgraph::visit::EdgeRef;
     use tracing::{debug, info};
 
@@ -711,9 +712,20 @@ mod tests {
         let mut config = GraphConfig::default();
         config.project_path = String::from(".");
         let g = Graph::from(config);
-        let symbols = g.file_paths(
+        let symbols: Vec<DefRefPair> = g.pairs_between_files(
             &String::from("src/extractor.rs"),
             &String::from("src/graph.rs"),
         );
+        symbols.iter().for_each(|pair| {
+            info!(
+                "{} {} {} -> {} {} {}",
+                pair.src_symbol.file,
+                pair.src_symbol.name,
+                pair.src_symbol.range.start_point.row,
+                pair.dst_symbol.file,
+                pair.dst_symbol.name,
+                pair.dst_symbol.range.start_point.row
+            );
+        });
     }
 }

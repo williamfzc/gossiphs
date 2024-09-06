@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use tracing::info;
 use tree_sitter::Range;
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -251,7 +250,7 @@ impl SymbolGraph {
         self.neighbor_symbols(*ref_index)
     }
 
-    pub fn file_paths(&self, src_file: &String, dst_file: &String) -> Vec<DefRefPair> {
+    pub fn pairs_between_files(&self, src_file: &String, dst_file: &String) -> Vec<DefRefPair> {
         if let (Some(src_index), Some(dst_index)) = (
             self.file_mapping.get(src_file),
             self.file_mapping.get(dst_file),
@@ -265,16 +264,9 @@ impl SymbolGraph {
                         src_symbol: self.g[each[1]].get_symbol().unwrap().clone(),
                         dst_symbol: self.g[each[2]].get_symbol().unwrap().clone(),
                     })
+                    .filter(|each| each.src_symbol.kind == SymbolKind::DEF)
                     .collect();
-            pairs.iter().for_each(|pair| {
-                info!(
-                    "{} {} -> {} {}",
-                    pair.src_symbol.file,
-                    pair.src_symbol.name,
-                    pair.dst_symbol.file,
-                    pair.dst_symbol.name
-                );
-            });
+            return pairs;
         }
 
         // fallback
