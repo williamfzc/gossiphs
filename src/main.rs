@@ -283,21 +283,22 @@ fn handle_relation(relation_cmd: RelationCommand) {
             .collect();
 
         for related_file in &files {
-            let score = related_files_map
-                .get(related_file)
-                .unwrap_or(&0)
-                .to_string();
-            row.push(score);
+            let score = related_files_map.get(related_file).unwrap_or(&0);
+            row.push(score.to_string());
 
             if symbol_wtr_opts.is_some() {
-                let pairs = g
-                    .pairs_between_files(&file, &related_file)
-                    .iter()
-                    .map(|each| each.src_symbol.name.clone())
-                    .collect::<HashSet<String>>()
-                    .into_iter()
-                    .collect::<Vec<String>>();
-                pair_row.push(pairs.join("|"));
+                if score > &0 {
+                    let pairs = g
+                        .pairs_between_files(&file, &related_file)
+                        .iter()
+                        .map(|each| each.src_symbol.name.clone())
+                        .collect::<HashSet<String>>()
+                        .into_iter()
+                        .collect::<Vec<String>>();
+                    pair_row.push(pairs.join("|"));
+                } else {
+                    pair_row.push(String::new());
+                }
             }
         }
         wtr.write_record(&row).expect("Failed to write record");
@@ -702,7 +703,7 @@ fn diff_test() {
 #[test]
 fn relation_test() {
     let mut config = CommonOptions::default();
-    config.project_path = "../gin".parse().unwrap();
+    config.project_path = ".".parse().unwrap();
     handle_relation(RelationCommand {
         common_options: config,
         csv: "ok.csv".to_string(),
