@@ -1,5 +1,5 @@
 use crate::extractor::Extractor;
-use crate::symbol::{Symbol, SymbolGraph, SymbolKind};
+use crate::symbol::{DefRefPair, Symbol, SymbolGraph, SymbolKind};
 use cupido::collector::config::Collect;
 use cupido::collector::config::{get_collector, Config};
 use cupido::relation::graph::RelationGraph as CupidoRelationGraph;
@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 pub struct FileContext {
     pub path: String,
@@ -491,36 +491,6 @@ impl Graph {
         contexts
     }
 
-    pub fn symbols_between_files(&self, src: &String, dst: &String) -> Vec<RelatedSymbol> {
-        if !self.files().contains(src) || !self.files().contains(dst) {
-            return Vec::new();
-        }
-
-        let mut related_symbols: Vec<RelatedSymbol> = vec![];
-
-        // other files -> this file
-        let definitions_in_file = self.symbol_graph.list_definitions(src);
-        let definition_count = definitions_in_file.len();
-
-        definitions_in_file.iter().for_each(|def| {
-            self.symbol_graph
-                .list_references_by_definition(&def.id())
-                .iter()
-                .filter(|(each, _)| {
-                    return each.file.eq(dst);
-                })
-                .for_each(|(each_ref, weight)| {
-                    let real_weight = std::cmp::max(weight / definition_count, 1);
-                    related_symbols.push(RelatedSymbol {
-                        symbol: each_ref.clone(),
-                        weight: real_weight,
-                    })
-                });
-        });
-
-        related_symbols
-    }
-
     pub fn related_symbols(&self, symbol: &Symbol) -> HashMap<Symbol, usize> {
         match symbol.kind {
             SymbolKind::DEF => self
@@ -544,6 +514,13 @@ impl Graph {
             .cloned()
             .collect();
         FileMetadata { symbols }
+    }
+
+    pub fn pairs_between_files(&self, src_file: &String, dst_file: &String) -> Vec<DefRefPair> {
+        if !self.files().contains(src_file) || !self.files().contains(dst_file) {
+            return Vec::new();
+        }
+        self.symbol_graph.pairs_between_files(src_file, dst_file)
     }
 }
 
@@ -607,6 +584,7 @@ impl GraphConfig {
 #[cfg(test)]
 mod tests {
     use crate::graph::{Graph, GraphConfig};
+    use crate::symbol::DefRefPair;
     use petgraph::visit::EdgeRef;
     use tracing::{debug, info};
 
@@ -688,16 +666,25 @@ mod tests {
     }
 
     #[test]
-    fn between_files() {
+    fn paths() {
+        tracing_subscriber::fmt::init();
         let mut config = GraphConfig::default();
         config.project_path = String::from(".");
         let g = Graph::from(config);
-        let symbols = g.symbols_between_files(
-            &String::from("src/rule.rs"),
+        let symbols: Vec<DefRefPair> = g.pairs_between_files(
             &String::from("src/extractor.rs"),
+            &String::from("src/graph.rs"),
         );
-        symbols.iter().for_each(|item| {
-            info!("{:?}: {}", item.symbol, item.weight);
+        symbols.iter().for_each(|pair| {
+            info!(
+                "{} {} {} -> {} {} {}",
+                pair.src_symbol.file,
+                pair.src_symbol.name,
+                pair.src_symbol.range.start_point.row,
+                pair.dst_symbol.file,
+                pair.dst_symbol.name,
+                pair.dst_symbol.range.start_point.row
+            );
         });
     }
 }

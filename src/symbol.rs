@@ -1,3 +1,4 @@
+use petgraph::algo::all_simple_paths;
 use petgraph::graph::{NodeIndex, UnGraph};
 use petgraph::prelude::EdgeRef;
 use serde::{Deserialize, Serialize};
@@ -248,4 +249,32 @@ impl SymbolGraph {
         let ref_index = self.symbol_mapping.get(symbol_id).unwrap();
         self.neighbor_symbols(*ref_index)
     }
+
+    pub fn pairs_between_files(&self, src_file: &String, dst_file: &String) -> Vec<DefRefPair> {
+        if let (Some(src_index), Some(dst_index)) = (
+            self.file_mapping.get(src_file),
+            self.file_mapping.get(dst_file),
+        ) {
+            // file -> symbol -> symbol -> file
+            // so at most 2
+            let pairs: Vec<_> =
+                all_simple_paths::<Vec<_>, _>(&self.g, *src_index, *dst_index, 1, Some(2))
+                    .filter(|each| each.len() == 4)
+                    .map(|each| DefRefPair {
+                        src_symbol: self.g[each[1]].get_symbol().unwrap().clone(),
+                        dst_symbol: self.g[each[2]].get_symbol().unwrap().clone(),
+                    })
+                    .filter(|each| each.src_symbol.kind == SymbolKind::DEF)
+                    .collect();
+            return pairs;
+        }
+
+        // fallback
+        vec![]
+    }
+}
+
+pub struct DefRefPair {
+    pub src_symbol: Symbol,
+    pub dst_symbol: Symbol,
 }

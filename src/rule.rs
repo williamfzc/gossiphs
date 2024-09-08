@@ -16,9 +16,24 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
         Extractor::Rust => Rule {
             import_grammar: r#"
 (identifier) @variable_name
+(call_expression
+  function: (identifier) @function)
+(call_expression
+  function: (field_expression
+    field: (field_identifier) @function.method))
+(call_expression
+  function: (scoped_identifier
+    "::"
+    name: (identifier) @function))
 "#,
             export_grammar: r#"
 (function_item name: (identifier) @exported_symbol)
+(function_signature_item name: (identifier) @exported_symbol)
+(generic_function
+  function: (identifier) @exported_symbol)
+(generic_function
+  function: (scoped_identifier
+    name: (identifier) @exported_symbol))
 "#,
         },
 
