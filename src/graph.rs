@@ -491,36 +491,6 @@ impl Graph {
         contexts
     }
 
-    pub fn symbols_between_files(&self, src: &String, dst: &String) -> Vec<RelatedSymbol> {
-        if !self.files().contains(src) || !self.files().contains(dst) {
-            return Vec::new();
-        }
-
-        let mut related_symbols: Vec<RelatedSymbol> = vec![];
-
-        // other files -> this file
-        let definitions_in_file = self.symbol_graph.list_definitions(src);
-        let definition_count = definitions_in_file.len();
-
-        definitions_in_file.iter().for_each(|def| {
-            self.symbol_graph
-                .list_references_by_definition(&def.id())
-                .iter()
-                .filter(|(each, _)| {
-                    return each.file.eq(dst);
-                })
-                .for_each(|(each_ref, weight)| {
-                    let real_weight = std::cmp::max(weight / definition_count, 1);
-                    related_symbols.push(RelatedSymbol {
-                        symbol: each_ref.clone(),
-                        weight: real_weight,
-                    })
-                });
-        });
-
-        related_symbols
-    }
-
     pub fn related_symbols(&self, symbol: &Symbol) -> HashMap<Symbol, usize> {
         match symbol.kind {
             SymbolKind::DEF => self
@@ -547,6 +517,9 @@ impl Graph {
     }
 
     pub fn pairs_between_files(&self, src_file: &String, dst_file: &String) -> Vec<DefRefPair> {
+        if !self.files().contains(src_file) || !self.files().contains(dst_file) {
+            return Vec::new();
+        }
         self.symbol_graph.pairs_between_files(src_file, dst_file)
     }
 }
@@ -689,20 +662,6 @@ mod tests {
         ));
         files.iter().for_each(|item| {
             info!("{}: {}", item.name, item.score);
-        });
-    }
-
-    #[test]
-    fn between_files() {
-        let mut config = GraphConfig::default();
-        config.project_path = String::from(".");
-        let g = Graph::from(config);
-        let symbols = g.symbols_between_files(
-            &String::from("src/rule.rs"),
-            &String::from("src/extractor.rs"),
-        );
-        symbols.iter().for_each(|item| {
-            info!("{:?}: {}", item.symbol, item.weight);
         });
     }
 

@@ -259,7 +259,7 @@ impl SymbolGraph {
             // so at most 2
             let pairs: Vec<_> =
                 all_simple_paths::<Vec<_>, _>(&self.g, *src_index, *dst_index, 1, Some(2))
-                    .filter(|each| each.len() > 0)
+                    .filter(|each| each.len() == 4)
                     .map(|each| DefRefPair {
                         src_symbol: self.g[each[1]].get_symbol().unwrap().clone(),
                         dst_symbol: self.g[each[2]].get_symbol().unwrap().clone(),

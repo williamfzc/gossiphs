@@ -6,7 +6,7 @@ use gossiphs::graph::{Graph, GraphConfig, RelatedFileContext};
 use gossiphs::server::{server_main, ServerConfig};
 use inquire::Text;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
 use std::io::Write;
@@ -104,6 +104,10 @@ struct RelationCommand {
     #[clap(long)]
     #[clap(default_value = "output.csv")]
     csv: String,
+
+    #[clap(long)]
+    #[clap(default_value = "")]
+    symbol_csv: String,
 }
 
 #[derive(Parser, Debug)]
@@ -245,7 +249,6 @@ fn handle_relation(relation_cmd: RelationCommand) {
         Ok(writer) => writer,
         Err(e) => panic!("Failed to create CSV writer: {}", e),
     };
-
     // Write the header row
     let mut header = vec!["".to_string()];
     header.extend(files.clone());
@@ -253,11 +256,28 @@ fn handle_relation(relation_cmd: RelationCommand) {
         panic!("Failed to write CSV header: {}", e);
     }
 
+    let mut symbol_wtr_opts = None;
+    if !relation_cmd.symbol_csv.is_empty() {
+        let symbol_wtr_result = Writer::from_path(relation_cmd.symbol_csv);
+        symbol_wtr_opts = match symbol_wtr_result {
+            Ok(writer) => Some(writer),
+            Err(e) => panic!("Failed to create CSV writer: {}", e),
+        };
+        let mut header = vec!["".to_string()];
+        header.extend(files.clone());
+        if let Some(symbol_wtr) = symbol_wtr_opts.as_mut() {
+            symbol_wtr
+                .write_record(&header)
+                .expect("Failed to write header to symbol_wtr");
+        }
+    }
+
     // Write each row
     for file in &files {
         let mut row = vec![file.clone()];
-        let related_files = g.related_files(file);
-        let related_files_map: HashMap<_, _> = related_files
+        let mut pair_row = vec![file.clone()];
+        let related_files_map: HashMap<_, _> = g
+            .related_files(file)
             .into_iter()
             .map(|rf| (rf.name, rf.score))
             .collect();
@@ -268,8 +288,24 @@ fn handle_relation(relation_cmd: RelationCommand) {
                 .unwrap_or(&0)
                 .to_string();
             row.push(score);
+
+            if symbol_wtr_opts.is_some() {
+                let pairs = g
+                    .pairs_between_files(&file, &related_file)
+                    .iter()
+                    .map(|each| each.src_symbol.name.clone())
+                    .collect::<HashSet<String>>()
+                    .into_iter()
+                    .collect::<Vec<String>>();
+                pair_row.push(pairs.join("|"));
+            }
         }
         wtr.write_record(&row).expect("Failed to write record");
+        if let Some(symbol_wtr) = symbol_wtr_opts.as_mut() {
+            symbol_wtr
+                .write_record(&pair_row)
+                .expect("Failed to write pair_row to symbol_wtr");
+        }
     }
 
     // Flush the writer to ensure all data is written
@@ -665,8 +701,11 @@ fn diff_test() {
 
 #[test]
 fn relation_test() {
+    let mut config = CommonOptions::default();
+    config.project_path = "../gin".parse().unwrap();
     handle_relation(RelationCommand {
-        common_options: CommonOptions::default(),
+        common_options: config,
         csv: "ok.csv".to_string(),
+        symbol_csv: "ok1.csv".to_string(),
     })
 }
