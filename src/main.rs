@@ -284,7 +284,11 @@ fn handle_relation(relation_cmd: RelationCommand) {
 
         for related_file in &files {
             let score = related_files_map.get(related_file).unwrap_or(&0);
-            row.push(score.to_string());
+            if score > &0 {
+                row.push(score.to_string());
+            } else {
+                row.push(String::new());
+            }
 
             if symbol_wtr_opts.is_some() {
                 if score > &0 {
