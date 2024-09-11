@@ -61,6 +61,9 @@ struct CommonOptions {
     /// git commit history search depth
     #[clap(long)]
     depth: Option<u32>,
+
+    #[clap(long)]
+    exclude_file_regex: Option<String>,
 }
 
 impl CommonOptions {
@@ -70,6 +73,7 @@ impl CommonOptions {
             project_path: String::from("."),
             strict: false,
             depth: None,
+            exclude_file_regex: None,
         }
     }
 }
@@ -236,6 +240,9 @@ fn handle_relation(relation_cmd: RelationCommand) {
     }
     if let Some(depth) = relation_cmd.common_options.depth {
         config.depth = depth;
+    }
+    if let Some(exclude) = relation_cmd.common_options.exclude_file_regex {
+        config.exclude_file_regex = exclude;
     }
 
     let g = Graph::from(config);
@@ -707,6 +714,7 @@ fn diff_test() {
 #[test]
 fn relation_test() {
     let mut config = CommonOptions::default();
+    config.exclude_file_regex = Some("".parse().unwrap());
     config.project_path = ".".parse().unwrap();
     handle_relation(RelationCommand {
         common_options: config,

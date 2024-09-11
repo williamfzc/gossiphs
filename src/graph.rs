@@ -6,6 +6,7 @@ use cupido::relation::graph::RelationGraph as CupidoRelationGraph;
 use indicatif::ProgressBar;
 use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -237,7 +238,12 @@ impl Graph {
         let size = relation_graph.size();
         info!("relation graph ready, size: {:?}", size);
 
-        let files = relation_graph.files();
+        let mut files = relation_graph.files();
+        if !conf.exclude_file_regex.is_empty() {
+            let re = Regex::new(&conf.exclude_file_regex).expect("Invalid regex");
+            files.retain(|file| !re.is_match(file));
+        }
+
         let file_len = files.len();
         let file_contexts =
             Self::extract_file_contexts(&conf.project_path, files, conf.symbol_limit);
@@ -567,6 +573,9 @@ pub struct GraphConfig {
 
     // symbol limit of each file
     pub symbol_limit: usize,
+
+    // exclude file regex
+    pub exclude_file_regex: String,
 }
 
 impl GraphConfig {
@@ -577,6 +586,7 @@ impl GraphConfig {
             commit_size_limit_ratio: 1.0,
             depth: 10240,
             symbol_limit: 4096,
+            exclude_file_regex: String::new(),
         }
     }
 }
