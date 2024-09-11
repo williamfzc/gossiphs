@@ -18,7 +18,8 @@ use tracing::{debug, info};
 #[clap(
     name = "gossiphs",
     bin_name = "gossiphs",
-    about = "gossiphs command line tool"
+    version = env!("CARGO_PKG_VERSION"),
+    about = "gossiphs (gossip-graphs) command line tool",
 )]
 struct Cli {
     #[clap(subcommand)]
