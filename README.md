@@ -104,13 +104,42 @@ to find the corresponding help.
 
 ```bash
 gossiphs relation
-gossiphs relation --csv abc.csv
+gossiphs relation --csv scores.csv --symbol-csv symbols.csv
 ```
 
 And you can use something like [pandas](https://pandas.pydata.org/) to handle this matrix and apply further analysis
 without accessing the rust part.
 
-![](https://private-user-images.githubusercontent.com/13421694/335850271-3e0736a7-d630-4483-9001-8fd06bddfe0c.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3MTczMTc0MDQsIm5iZiI6MTcxNzMxNzEwNCwicGF0aCI6Ii8xMzQyMTY5NC8zMzU4NTAyNzEtM2UwNzM2YTctZDYzMC00NDgzLTkwMDEtOGZkMDZiZGRmZTBjLnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNDA2MDIlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjQwNjAyVDA4MzE0NFomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPThhNzRlMTVhYzc1MDZjMzYzZThhOTQ3ZjI1MTI1YmVjMzE3ZjE2ZGU5MGQxMGE5OWYxOTk2M2ViNmMwNmI0ZTAmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0JmFjdG9yX2lkPTAma2V5X2lkPTAmcmVwb19pZD0wIn0.Jp1ZJDL2UfWAYBIhZr5uVKhK_Hvxk1lO1g-wdMTZJZ4)
+**scores.csv** shows the relations between files by int score.
+
+|                  | examples/mini.rs | src/extractor.rs | src/graph.rs | src/lib.rs | src/main.rs | src/rule.rs | src/server.rs | src/symbol.rs |
+|------------------|------------------|------------------|--------------|------------|-------------|-------------|---------------|---------------|
+| examples/mini.rs |                  |                  |              |            |             |             |               |               |
+| src/extractor.rs |                  |                  | 8            |            |             |             | 1             |               |
+| src/graph.rs     | 9                |                  |              |            | 23          |             | 5             |               |
+| src/lib.rs       |                  |                  |              |            |             |             |               |               |
+| src/main.rs      |                  |                  | 5            |            |             |             | 1             |               |
+| src/rule.rs      |                  | 18               |              |            |             |             |               |               |
+| src/server.rs    |                  |                  |              |            | 2           |             |               |               |
+| src/symbol.rs    | 1                | 28               | 64           |            | 32          |             | 13            |
+
+- By Column: `src/graph.rs` and `src/symbol.rs` have been used by `example/mini.rs`.
+- By Row: `src/rule.rs` has only been used by `src/extractor.rs`.
+
+**symbols.csv** shows the relations between files by real reference names.
+
+|                  | examples/mini.rs                                              | src/extractor.rs                | src/graph.rs                                                                                                                                                                                                                                              | src/lib.rs                         | src/main.rs                                                                             | src/rule.rs | src/server.rs | src/symbol.rs |
+|------------------|---------------------------------------------------------------|---------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------|-----------------------------------------------------------------------------------------|-------------|---------------|---------------|
+| examples/mini.rs |                                                               |                                 |                                                                                                                                                                                                                                                           |                                    |                                                                                         |             |               |               |
+| src/extractor.rs |                                                               |                                 | extract                                                                                                                                                                                                                                                   |                                    |                                                                                         |             | extract       |               |
+| src/graph.rs     | file_metadata\|default\|related_files\|related_symbols\|files |                                 | related_files\|files                                                                                                                                                                                                                                      |                                    | file_metadata\|files\|empty\|related_files                                              |             |               |               |
+| src/lib.rs       |                                                               |                                 |                                                                                                                                                                                                                                                           |                                    |                                                                                         |             |               |               |
+| src/main.rs      |                                                               | default                         |                                                                                                                                                                                                                                                           |                                    | main                                                                                    |             |               |               |
+| src/rule.rs      |                                                               | get_rule                        |                                                                                                                                                                                                                                                           |                                    |                                                                                         |             |               |               |
+| src/server.rs    |                                                               |                                 |                                                                                                                                                                                                                                                           |                                    |                                                                                         | server_main |               |               |
+| src/symbol.rs    | from                                                          | new\|id\|new_ref\|from\|new_def | list_definitions\|list_symbols\|id\|link_symbol_to_symbol\|link_file_to_symbol\|list_references_by_definition\|enhance_symbol_to_symbol\|get_symbol\|from\|new\|add_symbol\|add_file\|list_references\|pairs_between_files\|list_definitions_by_reference | new\|id\|from\|pairs_between_files | list_references_by_definition\|new\|from\|list_definitions_by_reference\|get_symbol\|id |
+
+- By column: **example/mini.rs** using `file_metadata`/`related_files` ... from `src/graph.rs`.
 
 #### Diff with context
 
