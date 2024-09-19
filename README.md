@@ -15,61 +15,16 @@ throughout the entire codebase to achieve more complex analysis.
 
 ```mermaid
 graph TD
-    A[main.py] --- B[module_a.py]
-    A ---  C[module_b.py]
-    B --- D[utils.py]
-    C --- D
-    A --- E[module_c.py]
-    E --- F[module_d.py]
-    E --- H[module_e.py]
-    H --- I[module_f.py]
-    I --- D
+    A[main.py] --- S1[func_main] --- B[module_a.py]
+    A --- S2[Handler] --- C[module_b.py]
+    B --- S3[func_util] --- D[utils.py]
+    C --- S3[func_util] --- D
+    A --- S4[func_init] --- E[module_c.py]
+    E --- S5[process] --- F[module_d.py]
+    E --- S6[Processor] --- H[module_e.py]
+    H --- S7[transform] --- I[module_f.py]
+    I --- S3[func_util] --- D
 ```
-
-## Goal & Motivation
-
-Code navigation is a fascinating subject that plays a pivotal role in various domains, such as:
-
-- Guiding the context during the development process within an IDE.
-- Facilitating more convenient code browsing on websites.
-- Analyzing the impact of code changes in Continuous Integration (CI) systems.
-- ...
-
-In the past, I endeavored to apply [LSP/LSIF technologies](https://lsif.dev/) and techniques
-like [Github's Stack-Graphs](https://dcreager.net/talks/stack-graphs/) to impact analysis, encountering different
-challenges along the way. For our needs, a method akin to Stack-Graphs aligns most closely with our expectations.
-However, the challenges are evident: it requires crafting highly language-specific rules, which is a considerable
-investment for us, given that we do not require such high precision data.
-
-We attempt to make some trade-offs on the challenges currently faced by
-stack-graphs to achieve our expected goals to a certain extent:
-
-- Zero repo-specific configuration: It can be applied to most languages and repositories without additional
-  configuration.
-- Low extension cost: adding rules for languages is not high.
-- Acceptable precision: We have sacrificed a certain level of precision, but we also hope that it remains at an
-  acceptable level.
-
-## How it works
-
-Gossiphs constructs a graph that interconnects symbols of definitions and references.
-
-1. Extract imports and exports: Identify the imports and exports of each file.
-2. Connect nodes: Establish connections between potential definition and reference nodes.
-3. Refine edges with commit histories: Utilize commit histories to refine the relationships between nodes.
-
-Unlike stack-graphs, we have omitted the highly complex scope analysis and instead opted to refine our edges using
-commit histories.
-This approach significantly reduces the complexity of rule writing, as the rules only need to specify which types of
-symbols should be exported or imported for each file.
-
-While there is undoubtedly a trade-off in precision, the benefits are clear:
-
-1. Minimal impact on accuracy: In practical scenarios, the loss of precision is not as significant as one might expect.
-2. Commit history relevance: The use of commit history to reflect the influence between code segments aligns well with
-   our objectives.
-3. Language support: We can easily support the vast majority of programming languages, meeting the analysis needs of
-   various types of repositories.
 
 ## Supported Languages
 
@@ -92,15 +47,13 @@ You can see the [rule files](./src/rule.rs) here.
 
 ## Usage
 
-The project is still in the experimental stage.
-
 ### As a command line tool
 
 You can find pre-compiled files for your platform
 on [Our Release Page](https://github.com/williamfzc/gossiphs/releases). After extraction, you can use `gossiphs --help`
 to find the corresponding help.
 
-#### Export file relation matrix to csv
+#### (👍Recommended) Export file relation matrix to csv
 
 ```bash
 gossiphs relation
@@ -110,7 +63,9 @@ gossiphs relation --csv scores.csv --symbol-csv symbols.csv
 And you can use something like [pandas](https://pandas.pydata.org/) to handle this matrix and apply further analysis
 without accessing the rust part.
 
-**scores.csv** shows the relations between files by int score.
+##### scores.csv
+
+shows the relations between files by int score.
 
 |                  | examples/mini.rs | src/extractor.rs | src/graph.rs | src/lib.rs | src/main.rs | src/rule.rs | src/server.rs | src/symbol.rs |
 |------------------|------------------|------------------|--------------|------------|-------------|-------------|---------------|---------------|
@@ -126,7 +81,9 @@ without accessing the rust part.
 - By Column: `src/graph.rs` and `src/symbol.rs` have been used by `example/mini.rs`.
 - By Row: `src/rule.rs` has only been used by `src/extractor.rs`.
 
-**symbols.csv** shows the relations between files by real reference names.
+##### **symbols.csv**
+
+shows the relations between files by real reference names.
 
 |                  | examples/mini.rs                                              | src/extractor.rs                | src/graph.rs                                                                                                                                                                                                                                              | src/lib.rs                         | src/main.rs                                                                             | src/rule.rs | src/server.rs | src/symbol.rs |
 |------------------|---------------------------------------------------------------|---------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------|-----------------------------------------------------------------------------------------|-------------|---------------|---------------|
@@ -140,6 +97,8 @@ without accessing the rust part.
 | src/symbol.rs    | from                                                          | new\|id\|new_ref\|from\|new_def | list_definitions\|list_symbols\|id\|link_symbol_to_symbol\|link_file_to_symbol\|list_references_by_definition\|enhance_symbol_to_symbol\|get_symbol\|from\|new\|add_symbol\|add_file\|list_references\|pairs_between_files\|list_definitions_by_reference | new\|id\|from\|pairs_between_files | list_references_by_definition\|new\|from\|list_definitions_by_reference\|get_symbol\|id |
 
 - By column: **example/mini.rs** using `file_metadata`/`related_files` ... from `src/graph.rs`.
+
+<details><summary>Other functions ...</summary>
 
 #### Diff with context
 
@@ -186,6 +145,8 @@ and get a code relation graph:
 
 <img width="644" alt="image" src="https://github.com/williamfzc/gossiphs/assets/13421694/03a35063-56b4-4d23-8a24-612708030138">
 
+</details>
+
 ### As a rust library
 
 Please refer to [examples](examples) for usage.
@@ -226,6 +187,51 @@ currently doing.
 ```
 
 API desc can be found [here](./src/server.rs).
+
+## Goal & Motivation
+
+Code navigation is a fascinating subject that plays a pivotal role in various domains, such as:
+
+- Guiding the context during the development process within an IDE.
+- Facilitating more convenient code browsing on websites.
+- Analyzing the impact of code changes in Continuous Integration (CI) systems.
+- ...
+
+In the past, I endeavored to apply [LSP/LSIF technologies](https://lsif.dev/) and techniques
+like [Github's Stack-Graphs](https://dcreager.net/talks/stack-graphs/) to impact analysis, encountering different
+challenges along the way. For our needs, a method akin to Stack-Graphs aligns most closely with our expectations.
+However, the challenges are evident: it requires crafting highly language-specific rules, which is a considerable
+investment for us, given that we do not require such high precision data.
+
+We attempt to make some trade-offs on the challenges currently faced by
+stack-graphs to achieve our expected goals to a certain extent:
+
+- Zero repo-specific configuration: It can be applied to most languages and repositories without additional
+  configuration.
+- Low extension cost: adding rules for languages is not high.
+- Acceptable precision: We have sacrificed a certain level of precision, but we also hope that it remains at an
+  acceptable level.
+
+## How it works
+
+Gossiphs constructs a graph that interconnects symbols of definitions and references.
+
+1. Extract imports and exports: Identify the imports and exports of each file.
+2. Connect nodes: Establish connections between potential definition and reference nodes.
+3. Refine edges with commit histories: Utilize commit histories to refine the relationships between nodes.
+
+Unlike stack-graphs, we have omitted the highly complex scope analysis and instead opted to refine our edges using
+commit histories.
+This approach significantly reduces the complexity of rule writing, as the rules only need to specify which types of
+symbols should be exported or imported for each file.
+
+While there is undoubtedly a trade-off in precision, the benefits are clear:
+
+1. Minimal impact on accuracy: In practical scenarios, the loss of precision is not as significant as one might expect.
+2. Commit history relevance: The use of commit history to reflect the influence between code segments aligns well with
+   our objectives.
+3. Language support: We can easily support the vast majority of programming languages, meeting the analysis needs of
+   various types of repositories.
 
 ## Precision
 
