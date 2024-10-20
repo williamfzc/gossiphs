@@ -334,9 +334,9 @@ dependencies = [
 
 [[package]]
 name = "cupido"
-version = "0.3.4"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bc67d8fb12fc756fec18281eb727c65e2d292794f184945cde302e27745f15a"
+checksum = "34d716a61bcc1587ac9576f07f0d87c06ff4bd689168fb8b6c00bae69707d37c"
 dependencies = [
  "axum",
  "clap",

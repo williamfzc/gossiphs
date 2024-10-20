@@ -234,7 +234,12 @@ impl Graph {
         // 1. call cupido
         // 2. extract symbols
         // 3. building def and ref relations
-        let relation_graph = create_cupido_graph(&conf.project_path, conf.depth);
+        let relation_graph = create_cupido_graph(
+            &conf.project_path,
+            conf.depth,
+            conf.exclude_author_regex,
+            conf.exclude_commit_regex,
+        );
         let size = relation_graph.size();
         info!("relation graph ready, size: {:?}", size);
 
@@ -544,10 +549,17 @@ pub struct FileMetadata {
     pub symbols: Vec<Symbol>,
 }
 
-fn create_cupido_graph(project_path: &String, depth: u32) -> CupidoRelationGraph {
+fn create_cupido_graph(
+    project_path: &String,
+    depth: u32,
+    exclude_author_regex: Option<String>,
+    exclude_commit_regex: Option<String>,
+) -> CupidoRelationGraph {
     let mut conf = Config::default();
     conf.repo_path = project_path.parse().unwrap();
     conf.depth = depth;
+    conf.author_exclude_regex = exclude_author_regex;
+    conf.commit_exclude_regex = exclude_commit_regex;
 
     let collector = get_collector();
     let graph = collector.walk(conf);
@@ -574,8 +586,9 @@ pub struct GraphConfig {
     // symbol limit of each file
     pub symbol_limit: usize,
 
-    // exclude file regex
     pub exclude_file_regex: String,
+    pub exclude_author_regex: Option<String>,
+    pub exclude_commit_regex: Option<String>,
 }
 
 impl GraphConfig {
@@ -587,6 +600,8 @@ impl GraphConfig {
             depth: 10240,
             symbol_limit: 4096,
             exclude_file_regex: String::new(),
+            exclude_author_regex: None,
+            exclude_commit_regex: None,
         }
     }
 }

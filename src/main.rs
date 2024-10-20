@@ -65,6 +65,9 @@ struct CommonOptions {
 
     #[clap(long)]
     exclude_file_regex: Option<String>,
+
+    #[clap(long)]
+    exclude_author_regex: Option<String>,
 }
 
 impl CommonOptions {
@@ -75,6 +78,7 @@ impl CommonOptions {
             strict: false,
             depth: None,
             exclude_file_regex: None,
+            exclude_author_regex: None,
         }
     }
 }
@@ -245,6 +249,7 @@ fn handle_relation(relation_cmd: RelationCommand) {
     if let Some(exclude) = relation_cmd.common_options.exclude_file_regex {
         config.exclude_file_regex = exclude;
     }
+    config.exclude_author_regex = relation_cmd.common_options.exclude_author_regex.clone();
 
     let g = Graph::from(config);
 
