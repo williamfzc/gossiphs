@@ -438,7 +438,7 @@ impl Graph {
 
     /// All files which pointed to this file
     pub fn related_files(&self, file_name: &String) -> Vec<RelatedFileContext> {
-        if !self.files().contains(file_name) {
+        if !self.symbol_graph.file_mapping.contains_key(file_name) {
             return Vec::new();
         }
 

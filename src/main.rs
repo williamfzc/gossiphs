@@ -4,9 +4,12 @@ use git2::build::CheckoutBuilder;
 use git2::{Commit, DiffOptions, Error, Object, ObjectType, Repository, Status};
 use gossiphs::graph::{Graph, GraphConfig, RelatedFileContext};
 use gossiphs::server::{server_main, ServerConfig};
+use indicatif::ProgressBar;
 use inquire::Text;
+use rayon::iter::ParallelIterator;
+use rayon::prelude::IntoParallelRefIterator;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
@@ -286,38 +289,47 @@ fn handle_relation(relation_cmd: RelationCommand) {
     }
 
     // Write each row
-    for file in &files {
-        let mut row = vec![file.clone()];
-        let mut pair_row = vec![file.clone()];
-        let related_files_map: HashMap<_, _> = g
-            .related_files(file)
-            .into_iter()
-            .map(|rf| (rf.name, rf.score))
-            .collect();
+    let pb = ProgressBar::new(files.len() as u64);
+    let results: Vec<(Vec<String>, Vec<String>)> = files
+        .par_iter()
+        .map(|file| {
+            pb.inc(1);
+            let mut row = vec![file.clone()];
+            let mut pair_row = vec![file.clone()];
+            let related_files_map: HashMap<_, _> = g
+                .related_files(file)
+                .into_iter()
+                .map(|rf| (rf.name, rf.score))
+                .collect();
 
-        for related_file in &files {
-            let score = related_files_map.get(related_file).unwrap_or(&0);
-            if score > &0 {
-                row.push(score.to_string());
-            } else {
-                row.push(String::new());
-            }
-
-            if symbol_wtr_opts.is_some() {
-                if score > &0 {
-                    let pairs = g
-                        .pairs_between_files(&file, &related_file)
-                        .iter()
-                        .map(|each| each.src_symbol.name.clone())
-                        .collect::<HashSet<String>>()
-                        .into_iter()
-                        .collect::<Vec<String>>();
-                    pair_row.push(pairs.join("|"));
+            for related_file in &files {
+                if let Some(score) = related_files_map.get(related_file) {
+                    if *score > 0 {
+                        row.push(score.to_string());
+                        if symbol_wtr_opts.is_some() {
+                            let pairs = g
+                                .pairs_between_files(&file, &related_file)
+                                .iter()
+                                .map(|each| each.src_symbol.name.clone())
+                                .collect::<Vec<String>>();
+                            pair_row.push(pairs.join("|"));
+                        }
+                    } else {
+                        row.push(String::new());
+                        pair_row.push(String::new());
+                    }
                 } else {
+                    row.push(String::new());
                     pair_row.push(String::new());
                 }
             }
-        }
+
+            (row, pair_row)
+        })
+        .collect();
+    pb.finish_and_clear();
+
+    for (row, pair_row) in results {
         wtr.write_record(&row).expect("Failed to write record");
         if let Some(symbol_wtr) = symbol_wtr_opts.as_mut() {
             symbol_wtr
