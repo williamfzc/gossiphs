@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
+use pyo3::{pyclass, pymethods};
 use tracing::{debug, info};
 
 pub struct FileContext {
@@ -19,6 +20,7 @@ pub struct FileContext {
     pub symbols: Vec<Symbol>,
 }
 
+#[pyclass]
 pub struct Graph {
     pub(crate) file_contexts: Vec<FileContext>,
     pub(crate) _relation_graph: CupidoRelationGraph,
@@ -444,8 +446,10 @@ fn create_cupido_graph(
     graph
 }
 
+#[pyclass]
 #[derive(Clone)]
 pub struct GraphConfig {
+    #[pyo3(get, set)]
     pub project_path: String,
 
     // a ref can only belong to limit def
@@ -469,7 +473,9 @@ pub struct GraphConfig {
     pub exclude_commit_regex: Option<String>,
 }
 
+#[pymethods]
 impl GraphConfig {
+    #[new]
     pub fn default() -> GraphConfig {
         GraphConfig {
             project_path: String::from("."),

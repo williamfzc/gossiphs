@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
+use pyo3::pyclass;
 use tree_sitter::Range;
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -13,6 +14,7 @@ pub enum SymbolKind {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[pyclass]
 pub struct Symbol {
     pub file: String,
     pub name: String,
@@ -271,6 +273,7 @@ impl SymbolGraph {
     }
 }
 
+#[pyclass]
 pub struct DefRefPair {
     pub src_symbol: Symbol,
     pub dst_symbol: Symbol,
