@@ -2,7 +2,6 @@ use clap::Parser;
 use csv::Writer;
 use git2::build::CheckoutBuilder;
 use git2::{Commit, DiffOptions, Error, Object, ObjectType, Repository, Status};
-use gossiphs::graph::{Graph, GraphConfig, RelatedFileContext};
 use gossiphs::server::{server_main, ServerConfig};
 use indicatif::ProgressBar;
 use inquire::Text;
@@ -16,6 +15,8 @@ use std::io::Write;
 use std::path::Path;
 use termtree::Tree;
 use tracing::{debug, info};
+use gossiphs::api::RelatedFileContext;
+use gossiphs::graph::{Graph, GraphConfig};
 
 #[derive(Parser, Debug)]
 #[clap(
@@ -223,7 +224,7 @@ fn handle_relate(relate_cmd: RelateCommand) {
     let mut related_files_data = Vec::new();
     let files = relate_cmd.get_files();
     for file in &files {
-        let mut files = g.related_files(&String::from(file));
+        let mut files = g.related_files(String::from(file));
         if relate_cmd.ignore_zero {
             files.retain(|each| each.score > 0);
         }
@@ -297,7 +298,7 @@ fn handle_relation(relation_cmd: RelationCommand) {
             let mut row = vec![file.clone()];
             let mut pair_row = vec![file.clone()];
             let related_files_map: HashMap<_, _> = g
-                .related_files(file)
+                .related_files(file.clone())
                 .into_iter()
                 .map(|rf| (rf.name, rf.score))
                 .collect();
@@ -308,7 +309,7 @@ fn handle_relation(relation_cmd: RelationCommand) {
                         row.push(score.to_string());
                         if symbol_wtr_opts.is_some() {
                             let pairs = g
-                                .pairs_between_files(&file, &related_file)
+                                .pairs_between_files(file.clone(), related_file.clone())
                                 .iter()
                                 .map(|each| each.src_symbol.name.clone())
                                 .collect::<Vec<String>>();
@@ -364,7 +365,7 @@ fn handle_interactive(interactive_cmd: InteractiveCommand) {
         let file_path_result = Text::new("File Path:").prompt();
         match file_path_result {
             Ok(name) => {
-                let files = g.related_files(&name);
+                let files = g.related_files(name.clone());
                 let json = serde_json::to_string_pretty(&RelatedFileWrapper {
                     name,
                     related: files,
@@ -424,7 +425,7 @@ fn handle_obsidian(obsidian_cmd: ObsidianCommand) {
     }
 
     for each_file in files {
-        let related = g.related_files(&each_file);
+        let related = g.related_files(each_file.clone());
         let markdown_filename = format!("{}/{}.md", &obsidian_cmd.vault_dir, each_file);
         let mut markdown_content = String::new();
         for related_file in related {
@@ -582,12 +583,12 @@ fn handle_diff(diff_cmd: DiffCommand) {
     let mut ret: Vec<DiffFileContext> = Vec::new();
     for each_file in diff_files {
         let target_related_map: HashMap<String, RelatedFileContext> = target_graph
-            .related_files(&each_file)
+            .related_files(each_file.clone())
             .into_iter()
             .map(|item| return (item.name.clone(), item))
             .collect();
         let source_related_map: HashMap<String, RelatedFileContext> = source_graph
-            .related_files(&each_file)
+            .related_files(each_file.clone())
             .into_iter()
             .map(|item| return (item.name.clone(), item))
             .collect();

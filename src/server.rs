@@ -1,4 +1,4 @@
-use crate::graph::{FileMetadata, Graph, RelatedFileContext};
+use crate::graph::{Graph};
 use crate::symbol::{Symbol, SymbolKind};
 use axum::extract::Query;
 use axum::routing::get;
@@ -6,6 +6,7 @@ use axum::Router;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
+use crate::api::{FileMetadata, RelatedFileContext};
 
 lazy_static::lazy_static! {
     pub static ref GRAPH_INST: Arc<RwLock<Graph>> = Arc::new(RwLock::new(Graph::empty()));
@@ -86,14 +87,14 @@ struct SymbolIdParams {
 
 async fn file_metadata_handler(Query(params): Query<FileParams>) -> axum::Json<FileMetadata> {
     let g = GRAPH_INST.read().unwrap();
-    axum::Json(g.file_metadata(&params.path))
+    axum::Json(g.file_metadata(params.path))
 }
 
 async fn file_relation_handler(
     Query(params): Query<FileParams>,
 ) -> axum::Json<Vec<RelatedFileContext>> {
     let g = GRAPH_INST.read().unwrap();
-    axum::Json(g.related_files(&params.path))
+    axum::Json(g.related_files(params.path))
 }
 
 async fn file_list_handler() -> axum::Json<HashSet<String>> {
@@ -106,7 +107,7 @@ async fn symbol_relation_handler(
 ) -> axum::Json<HashMap<String, usize>> {
     let g = GRAPH_INST.read().unwrap();
     let targets: Vec<Symbol> = g
-        .file_metadata(&params.path)
+        .file_metadata(params.path)
         .symbols
         .into_iter()
         .filter(|each| {
