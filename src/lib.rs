@@ -12,7 +12,7 @@ use crate::graph::GraphConfig;
 mod pyapi;
 
 #[pymodule]
-fn gossiphs(m: &PyModule) -> PyResult<()> {
+fn _rust_api(m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(pyapi::create_graph, m)?)?;
     m.add_class::<GraphConfig>()?;
     Ok(())

@@ -423,8 +423,12 @@ impl Graph {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[pyclass]
 pub struct RelatedSymbol {
+    #[pyo3(get)]
     pub(crate) symbol: Symbol,
+
+    #[pyo3(get)]
     pub(crate) weight: usize,
 }
 

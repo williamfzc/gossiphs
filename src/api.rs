@@ -8,16 +8,20 @@ use pyo3::{pyclass, pymethods};
 #[derive(Serialize, Deserialize, Clone)]
 #[pyclass]
 pub struct RelatedFileContext {
+    #[pyo3(get)]
     pub name: String,
     pub score: usize,
     pub defs: usize,
     pub refs: usize,
+
+    #[pyo3(get)]
     pub related_symbols: Vec<RelatedSymbol>,
 }
 
 #[derive(Serialize, Deserialize)]
 #[pyclass]
 pub struct FileMetadata {
+    #[pyo3(get)]
     pub symbols: Vec<Symbol>,
 }
 

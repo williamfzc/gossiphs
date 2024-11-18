@@ -6,3 +6,4 @@ build-backend = "maturin"
 # "extension-module" tells pyo3 we want to build an extension module (skips linking against libpython.so)
 features = ["pyo3/extension-module"]
 python-source = "py_wrapper"
+module-name = "gossiphs._rust_api"
