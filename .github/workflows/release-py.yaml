@@ -37,6 +37,7 @@ jobs:
           args: --release --out dist
           sccache: 'true'
           manylinux: auto
+          before-script-linux: "cargo run --bin stub_gen"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -58,6 +59,8 @@ jobs:
         with:
           python-version: 3.x
           architecture: ${{ matrix.platform.target }}
+      - name: Build stub
+        run: cargo run --bin stub_gen
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -84,6 +87,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
+      - name: Build stub
+        run: cargo run --bin stub_gen
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -100,6 +105,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Build stub
+        run: cargo run --bin stub_gen
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:

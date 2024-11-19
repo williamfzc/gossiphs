@@ -11,6 +11,8 @@ use pyo3::prelude::*;
 
 mod pyapi;
 
+use pyo3_stub_gen::define_stub_info_gatherer;
+
 #[pymodule]
 fn _rust_api(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(pyapi::create_graph, m)?)?;
@@ -18,3 +20,5 @@ fn _rust_api(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Graph>()?;
     Ok(())
 }
+
+define_stub_info_gatherer!(stub_info);
