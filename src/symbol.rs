@@ -4,35 +4,57 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
+use pyo3::{pyclass, pymethods};
 use tree_sitter::Range;
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[pyclass]
 pub enum SymbolKind {
     DEF,
     REF,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[pyclass]
 pub struct Symbol {
+    #[pyo3(get)]
     pub file: String,
+
+    #[pyo3(get)]
     pub name: String,
+
+    #[pyo3(get)]
     pub range: RangeWrapper,
+
     pub kind: SymbolKind,
+}
+
+#[pymethods]
+impl Symbol {
+    fn is_def(&self) -> bool {
+        self.kind == SymbolKind::DEF
+    }
 }
 
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
 )]
+#[pyclass]
 pub struct Point {
+    #[pyo3(get)]
     pub row: usize,
+    #[pyo3(get)]
     pub column: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[pyclass]
 pub struct RangeWrapper {
     pub start_byte: usize,
     pub end_byte: usize,
+    #[pyo3(get)]
     pub start_point: Point,
+    #[pyo3(get)]
     pub end_point: Point,
 }
 
@@ -271,6 +293,7 @@ impl SymbolGraph {
     }
 }
 
+#[pyclass]
 pub struct DefRefPair {
     pub src_symbol: Symbol,
     pub dst_symbol: Symbol,

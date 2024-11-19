@@ -1,24 +1,32 @@
-use std::cmp::Reverse;
-use std::collections::{HashMap, HashSet};
-use serde::{Deserialize, Serialize};
 use crate::graph::{Graph, RelatedSymbol};
 use crate::symbol::{DefRefPair, Symbol, SymbolKind};
+use serde::{Deserialize, Serialize};
+use std::cmp::Reverse;
+use std::collections::{HashMap, HashSet};
+use pyo3::{pyclass, pymethods};
 
 #[derive(Serialize, Deserialize, Clone)]
+#[pyclass]
 pub struct RelatedFileContext {
+    #[pyo3(get)]
     pub name: String,
     pub score: usize,
     pub defs: usize,
     pub refs: usize,
+
+    #[pyo3(get)]
     pub related_symbols: Vec<RelatedSymbol>,
 }
 
 #[derive(Serialize, Deserialize)]
+#[pyclass]
 pub struct FileMetadata {
+    #[pyo3(get)]
     pub symbols: Vec<Symbol>,
 }
 
 // Read API v1
+#[pymethods]
 impl Graph {
     pub fn files(&self) -> HashSet<String> {
         self.file_contexts

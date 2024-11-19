@@ -1,0 +1,17 @@
+[project]
+name = "gossiphs"
+version = "0.8.3"
+description = ""
+requires-python = ">=3.8"
+dependencies = [
+]
+
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+# "extension-module" tells pyo3 we want to build an extension module (skips linking against libpython.so)
+features = ["pyo3/extension-module"]
+python-source = "py_wrapper"
+module-name = "gossiphs._rust_api"

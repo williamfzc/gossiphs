@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
+use pyo3::{pyclass, pymethods};
 use tracing::{debug, info};
 
 pub struct FileContext {
@@ -19,6 +20,7 @@ pub struct FileContext {
     pub symbols: Vec<Symbol>,
 }
 
+#[pyclass]
 pub struct Graph {
     pub(crate) file_contexts: Vec<FileContext>,
     pub(crate) _relation_graph: CupidoRelationGraph,
@@ -421,8 +423,12 @@ impl Graph {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[pyclass]
 pub struct RelatedSymbol {
+    #[pyo3(get)]
     pub(crate) symbol: Symbol,
+
+    #[pyo3(get)]
     pub(crate) weight: usize,
 }
 
@@ -444,8 +450,10 @@ fn create_cupido_graph(
     graph
 }
 
+#[pyclass]
 #[derive(Clone)]
 pub struct GraphConfig {
+    #[pyo3(get, set)]
     pub project_path: String,
 
     // a ref can only belong to limit def
@@ -459,17 +467,23 @@ pub struct GraphConfig {
     pub commit_size_limit_ratio: f32,
 
     // commit history search depth
+    #[pyo3(get, set)]
     pub depth: u32,
 
     // symbol limit of each file
     pub symbol_limit: usize,
 
+    #[pyo3(get, set)]
     pub exclude_file_regex: String,
+    #[pyo3(get, set)]
     pub exclude_author_regex: Option<String>,
+    #[pyo3(get, set)]
     pub exclude_commit_regex: Option<String>,
 }
 
+#[pymethods]
 impl GraphConfig {
+    #[new]
     pub fn default() -> GraphConfig {
         GraphConfig {
             project_path: String::from("."),
