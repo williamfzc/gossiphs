@@ -467,13 +467,17 @@ pub struct GraphConfig {
     pub commit_size_limit_ratio: f32,
 
     // commit history search depth
+    #[pyo3(get, set)]
     pub depth: u32,
 
     // symbol limit of each file
     pub symbol_limit: usize,
 
+    #[pyo3(get, set)]
     pub exclude_file_regex: String,
+    #[pyo3(get, set)]
     pub exclude_author_regex: Option<String>,
+    #[pyo3(get, set)]
     pub exclude_commit_regex: Option<String>,
 }
 
