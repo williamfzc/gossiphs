@@ -46,6 +46,14 @@ jobs:
         with:
           name: wheels-linux-${{ matrix.platform.target }}
           path: dist
+      - name: Build Binary
+        run: |
+          cargo build --release
+      - name: Upload Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: gossiphs-linux-${{ matrix.platform.target }}
+          path: target/release/gossiphs
 
   windows:
     runs-on: ${{ matrix.platform.runner }}
@@ -73,6 +81,14 @@ jobs:
         with:
           name: wheels-windows-${{ matrix.platform.target }}
           path: dist
+      - name: Build Binary
+        run: |
+          cargo build --release
+      - name: Upload Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: gossiphs-windows-${{ matrix.platform.target }}
+          path: target/release/gossiphs
 
   macos:
     runs-on: ${{ matrix.platform.runner }}
@@ -99,6 +115,14 @@ jobs:
         with:
           name: wheels-macos-${{ matrix.platform.target }}
           path: dist
+      - name: Build Binary
+        run: |
+          cargo build --release
+      - name: Upload Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: gossiphs-macos-${{ matrix.platform.target }}
+          path: target/release/gossiphs
 
   sdist:
     runs-on: ubuntu-latest
@@ -129,6 +153,7 @@ jobs:
       attestations: write
     steps:
       - uses: actions/download-artifact@v4
+      - run: ls -l
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v1
         with:
@@ -141,3 +166,11 @@ jobs:
         with:
           command: upload
           args: --non-interactive --skip-existing wheels-*/*
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            gossiphs-macos-aarch64
+            gossiphs-linux-x86_64
+            gossiphs-windows-x64
