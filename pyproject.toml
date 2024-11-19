@@ -1,6 +1,6 @@
 [project]
 name = "gossiphs"
-version = "0.9.4"
+version = "0.9.5"
 description = ""
 requires-python = ">=3.8"
 dependencies = [
