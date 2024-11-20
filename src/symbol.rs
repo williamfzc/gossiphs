@@ -295,6 +295,8 @@ impl SymbolGraph {
 
 #[pyclass]
 pub struct DefRefPair {
+    #[pyo3(get)]
     pub src_symbol: Symbol,
+    #[pyo3(get)]
     pub dst_symbol: Symbol,
 }
