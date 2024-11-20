@@ -173,5 +173,6 @@ jobs:
         with:
           files: |
             gossiphs-macos-aarch64/*
+            gossiphs-macos-x86_64/*
             gossiphs-linux-x86_64/*
             gossiphs-windows-x64/*
