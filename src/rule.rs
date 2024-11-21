@@ -50,6 +50,7 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (export_statement (interface_declaration name: (type_identifier) @exported_symbol))
 (export_statement (class_declaration name: (type_identifier) @exported_symbol))
 (export_specifier (identifier) @exported_symbol)
+(lexical_declaration (variable_declarator name: (identifier) @lexical_symbol))
 "#,
         },
 

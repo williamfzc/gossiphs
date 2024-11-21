@@ -163,6 +163,9 @@ impl Extractor {
             &String::from("abc"),
             &String::from(
                 r#"
+const THISISCONST = "";
+export const ANOTHERCONST = "111";
+                
 import { store } from 'docx-deps';
 
 import { toggleShowCommentNumbers } from '$common/redux/actions';
