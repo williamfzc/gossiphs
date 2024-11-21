@@ -3,7 +3,7 @@
 ![Crates.io Version](https://img.shields.io/crates/v/gossiphs)
 [![RealWorld Test](https://github.com/williamfzc/gossiphs/actions/workflows/cargo-test.yml/badge.svg)](https://github.com/williamfzc/gossiphs/actions/workflows/cargo-test.yml)
 
-An experimental Rust library for general code file relationship analysis. Based on tree-sitter and git analysis.
+"Zero setup" general code file relationship analysis. With Python & Rust. Based on tree-sitter and git analysis.
 
 ## What's it
 
@@ -47,148 +47,71 @@ You can see the [rule files](./src/rule.rs) here.
 
 ## Usage
 
-### As a command line tool
-
-You can find pre-compiled files for your platform
-on [Our Release Page](https://github.com/williamfzc/gossiphs/releases). After extraction, you can use `gossiphs --help`
-to find the corresponding help.
-
-#### (👍Recommended) Export file relation matrix to csv
+### Python
 
 ```bash
-gossiphs relation
-gossiphs relation --csv scores.csv --symbol-csv symbols.csv
+pip install gossiphs
 ```
 
-And you can use something like [pandas](https://pandas.pydata.org/) to handle this matrix and apply further analysis
-without accessing the rust part.
+Analyze your codebase with networkx within 30 lines:
 
-##### scores.csv
+```python
+import networkx as nx
+from gossiphs import GraphConfig, create_graph, Graph
 
-shows the relations between files by int score.
+config = GraphConfig()
+config.project_path = "../.."
+graph: Graph = create_graph(config)
 
-|                  | examples/mini.rs | src/extractor.rs | src/graph.rs | src/lib.rs | src/main.rs | src/rule.rs | src/server.rs | src/symbol.rs |
-|------------------|------------------|------------------|--------------|------------|-------------|-------------|---------------|---------------|
-| examples/mini.rs |                  |                  |              |            |             |             |               |               |
-| src/extractor.rs |                  |                  | 8            |            |             |             | 1             |               |
-| src/graph.rs     | 9                |                  |              |            | 23          |             | 5             |               |
-| src/lib.rs       |                  |                  |              |            |             |             |               |               |
-| src/main.rs      |                  |                  | 5            |            |             |             | 1             |               |
-| src/rule.rs      |                  | 18               |              |            |             |             |               |               |
-| src/server.rs    |                  |                  |              |            | 2           |             |               |               |
-| src/symbol.rs    | 1                | 28               | 64           |            | 32          |             | 13            |
+nx_graph = nx.DiGraph()
 
-- By Column: `src/graph.rs` and `src/symbol.rs` have been used by `example/mini.rs`.
-- By Row: `src/rule.rs` has only been used by `src/extractor.rs`.
+for each_file in graph.files():
+    nx_graph.add_node(each_file, metadata=graph.file_metadata(each_file))
 
-##### **symbols.csv**
+    related_files = graph.related_files(each_file)
+    for each_related_file in related_files:
+        related_symbols = set(each_symbol.symbol.name for each_symbol in each_related_file.related_symbols)
 
-shows the relations between files by real reference names.
+        nx_graph.add_edge(
+            each_file,
+            each_related_file.name,
+            related_symbols=list(related_symbols)
+        )
 
-|                  | examples/mini.rs                                              | src/extractor.rs                | src/graph.rs                                                                                                                                                                                                                                              | src/lib.rs                         | src/main.rs                                                                             | src/rule.rs | src/server.rs | src/symbol.rs |
-|------------------|---------------------------------------------------------------|---------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------|-----------------------------------------------------------------------------------------|-------------|---------------|---------------|
-| examples/mini.rs |                                                               |                                 |                                                                                                                                                                                                                                                           |                                    |                                                                                         |             |               |               |
-| src/extractor.rs |                                                               |                                 | extract                                                                                                                                                                                                                                                   |                                    |                                                                                         |             | extract       |               |
-| src/graph.rs     | file_metadata\|default\|related_files\|related_symbols\|files |                                 | related_files\|files                                                                                                                                                                                                                                      |                                    | file_metadata\|files\|empty\|related_files                                              |             |               |               |
-| src/lib.rs       |                                                               |                                 |                                                                                                                                                                                                                                                           |                                    |                                                                                         |             |               |               |
-| src/main.rs      |                                                               | default                         |                                                                                                                                                                                                                                                           |                                    | main                                                                                    |             |               |               |
-| src/rule.rs      |                                                               | get_rule                        |                                                                                                                                                                                                                                                           |                                    |                                                                                         |             |               |               |
-| src/server.rs    |                                                               |                                 |                                                                                                                                                                                                                                                           |                                    |                                                                                         | server_main |               |               |
-| src/symbol.rs    | from                                                          | new\|id\|new_ref\|from\|new_def | list_definitions\|list_symbols\|id\|link_symbol_to_symbol\|link_file_to_symbol\|list_references_by_definition\|enhance_symbol_to_symbol\|get_symbol\|from\|new\|add_symbol\|add_file\|list_references\|pairs_between_files\|list_definitions_by_reference | new\|id\|from\|pairs_between_files | list_references_by_definition\|new\|from\|list_definitions_by_reference\|get_symbol\|id |
+print(f"NetworkX graph created with {nx_graph.number_of_nodes()} nodes and {nx_graph.number_of_edges()} edges.")
 
-- By column: **example/mini.rs** using `file_metadata`/`related_files` ... from `src/graph.rs`.
-
-<details><summary>Other functions ...</summary>
-
-#### Diff with context
-
-```bash
-# diff between HEAD and HEAD~1
-gossiphs diff
-
-# custom diff
-gossiphs diff --target HEAD~5
-gossiphs diff --target d18a5db39752d244664a23f74e174448b66b5b7e
-
-# output json
-gossiphs diff --json
+for src, dest, data in nx_graph.edges(data=True):
+    print(f"{src} -> {dest}, related symbols: {data['related_symbols']}")
 ```
 
-output:
+Output:
 
 ```text
-src/services/user-info/index.ts
-├── src/background-script/driveUploader.ts (ADDED)
-├── src/background-script/task.ts (DELETED)
-├── scripts/download-config.js (DELETED)
-├── src/background-script/sdk.ts
-├── src/services/user-info/listener.ts
-├── src/services/config/index.ts
-├── src/content-script/modal.ts
-├── src/background-script/help-center.ts
+NetworkX graph created with 13 nodes and 27 edges.
+src/server.rs -> src/main.rs, related symbols: ['server_main']
+src/main.rs -> src/graph.rs, related symbols: ['default']
+src/main.rs -> examples/mini.rs, related symbols: ['default']
+src/main.rs -> src/server.rs, related symbols: ['main']
+src/symbol.rs -> src/graph.rs, related symbols: ['link_file_to_symbol', 'list_references', 'list_references_by_definition', 'id', 'enhance_symbol_to_symbol', 'add_file', 'add_symbol', 'list_definitions', 'list_symbols', 'new', 'link_symbol_to_symbol', 'get_symbol']
+...
 ```
 
-- ADDED: Refers to file relationships added in this diff
-- DELETED: Refers to file relationships deleted in this diff
-- Others: Refers to file relationships that were not affected by this diff and originally existed
+More [examples](./py_wrapper/examples) can be found here.
 
-#### Obsidian Graph
+### Others
 
-For example, you can use this command to generate
-an [obsidian vault](https://help.obsidian.md/Getting+started/Create+a+vault):
+We also provide a CLI and additional usage options, making it easy to directly export CSV files or start an HTTP service.
 
-```bash
-gossiphs obsidian --project-path . --vault-dir ./target_vault
-```
-
-and get a code relation graph:
-
-<img width="644" alt="image" src="https://github.com/williamfzc/gossiphs/assets/13421694/03a35063-56b4-4d23-8a24-612708030138">
-
-</details>
-
-### As a rust library
-
-Please refer to [examples](examples) for usage.
-
-```rust
-fn main() {
-    let config = GraphConfig::default();
-    let g = Graph::from(config);
-
-    // done! just try it
-    let all_files = g.files();
-    for file in &all_files {
-        // related file search
-        let related_files = g.related_files(file);
-        for each_related in &related_files {
-            println!("{} -> {}: {}", file, each_related.name, each_related.score);
-        }
-
-        // file details
-        if !related_files.is_empty() {
-            let random_file = related_files[0].name.clone();
-            let meta = g.file_metadata(&random_file);
-            println!("symbols in {}: {:?}", random_file, meta.symbols.len());
-
-            // and query the symbol infos
-        }
-    }
-}
-```
-
-### As a local server
-
-Starting a local server similar to LSP for other clients to use may be a reasonable approach, which is what we are
-currently doing.
-
-```bash
-./gossiphs server --project-path ./your/project --strict
-```
-
-API desc can be found [here](./src/server.rs).
+See [usage page](./docs/usage.md).
 
 ## Goal & Motivation
+
+> [!TIP]
+> Create a file relationship index with:
+> - low cost
+> - acceptable accuracy
+> - high versatility for nearly any code repository
+>
 
 Code navigation is a fascinating subject that plays a pivotal role in various domains, such as:
 
