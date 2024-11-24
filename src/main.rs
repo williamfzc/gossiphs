@@ -63,6 +63,9 @@ struct CommonOptions {
     #[clap(default_value = "false")]
     strict: bool,
 
+    #[clap(long)]
+    def_limit: Option<usize>,
+
     /// git commit history search depth
     #[clap(long)]
     depth: Option<u32>,
@@ -80,6 +83,7 @@ impl CommonOptions {
         CommonOptions {
             project_path: String::from("."),
             strict: false,
+            def_limit: None,
             depth: None,
             exclude_file_regex: None,
             exclude_author_regex: None,
@@ -247,6 +251,10 @@ fn handle_relation(relation_cmd: RelationCommand) {
     if relation_cmd.common_options.strict {
         config.def_limit = 1;
     }
+    if relation_cmd.common_options.def_limit.is_some() {
+        config.def_limit = relation_cmd.common_options.def_limit.unwrap();
+    }
+
     if let Some(depth) = relation_cmd.common_options.depth {
         config.depth = depth;
     }

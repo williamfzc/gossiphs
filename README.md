@@ -163,14 +163,14 @@ While there is undoubtedly a trade-off in precision, the benefits are clear:
 > the areas where it is primarily used.
 
 The method we use to demonstrate accuracy is to compare the results with those of LSP/LSIF. It must be admitted that
-static inference is almost impossible to obtain all reference relationships like LSP, but in strict mode, our
-calculation accuracy is still quite considerable. In normal mode, you can decide whether to adopt the relationship based
-on the weight returned.
+static inference is almost impossible to obtain all reference relationships like LSP. 
 
-| Repo                                | Precision (Strict Mode) | Graph Generated Time |
-|-------------------------------------|-------------------------|----------------------|
-| https://github.com/williamfzc/srctx | 80/80 = 100 %           | 83.139791ms          |
-| https://github.com/gin-gonic/gin    | 160/167 = 95.80838 %    | 310.6805ms           |
+You can further combine your own needs and use other methods such as tfidf to process the results to meet more complex requirements.
+
+| Repo                             | Coverage of LSP Edges by Gossiphs |
+|----------------------------------|-----------------------------------|
+| https://github.com/go-gorm/gorm  | 442/499 = 88.5 %                  |
+| https://github.com/gin-gonic/gin | 238/252 = 94.4%                   |
 
 ## Contribution
 
@@ -182,6 +182,8 @@ You just need to:
 1. Edit rules in [src/rule.rs](src/rule.rs)
 2. Test it in [src/extractor.rs](src/extractor.rs)
 3. Try it with your repo in [src/graph.rs](src/graph.rs)
+
+[Tree-sitter Playground](https://tree-sitter.github.io/tree-sitter/playground) is a good helper.
 
 ## License
 

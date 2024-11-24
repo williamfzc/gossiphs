@@ -457,6 +457,7 @@ pub struct GraphConfig {
     pub project_path: String,
 
     // a ref can only belong to limit def
+    #[pyo3(get, set)]
     pub def_limit: usize,
 
     // commit size limit
@@ -464,13 +465,15 @@ pub struct GraphConfig {
     // large commit: edit more than xx% files once
     // default to 1.0, do nothing
     // set to 0.3, means 30%
+    #[pyo3(get, set)]
     pub commit_size_limit_ratio: f32,
 
     // commit history search depth
     #[pyo3(get, set)]
     pub depth: u32,
 
-    // symbol limit of each file
+    // symbol limit of each file, for ignoring large files
+    #[pyo3(get, set)]
     pub symbol_limit: usize,
 
     #[pyo3(get, set)]
@@ -487,7 +490,7 @@ impl GraphConfig {
     pub fn default() -> GraphConfig {
         GraphConfig {
             project_path: String::from("."),
-            def_limit: 1,
+            def_limit: 4,
             commit_size_limit_ratio: 1.0,
             depth: 10240,
             symbol_limit: 4096,
