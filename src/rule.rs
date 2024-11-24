@@ -15,6 +15,7 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
     match extractor_type {
         Extractor::Rust => Rule {
             import_grammar: r#"
+(type_identifier) @variable_name
 (identifier) @variable_name
 (call_expression
   function: (identifier) @function)
@@ -40,6 +41,7 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
         Extractor::TypeScript => Rule {
             import_grammar: r#"
 (identifier) @variable_name
+(type_identifier) @variable_name
 "#,
             export_grammar: r#"
 (export_statement (function_declaration name: (identifier) @exported_symbol))
@@ -57,6 +59,8 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
         Extractor::Go => Rule {
             import_grammar: r#"
 (identifier) @variable_name
+(type_identifier) @variable_name
+(field_identifier) @variable_name
 "#,
             export_grammar: r#"
 (function_declaration name: (identifier) @exported_symbol)
