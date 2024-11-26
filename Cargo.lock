@@ -489,7 +489,7 @@ dependencies = [
 
 [[package]]
 name = "gossiphs"
-version = "0.9.18"
+version = "0.9.19"
 dependencies = [
  "axum",
  "cc",
