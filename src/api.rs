@@ -22,6 +22,12 @@ pub struct RelatedFileContext {
 #[pyclass]
 pub struct FileMetadata {
     #[pyo3(get)]
+    pub path: String,
+
+    #[pyo3(get)]
+    pub commits: Vec<String>,
+
+    #[pyo3(get)]
     pub symbols: Vec<Symbol>,
 }
 
@@ -123,7 +129,13 @@ impl Graph {
             .iter()
             .cloned()
             .collect();
-        FileMetadata { symbols }
+
+        let commit_sha_list = self._relation_graph.file_related_commits(&file_name).unwrap_or_default();
+        FileMetadata {
+            path: file_name,
+            commits: commit_sha_list,
+            symbols
+        }
     }
 
     pub fn pairs_between_files(&self, src_file: String, dst_file: String) -> Vec<DefRefPair> {
