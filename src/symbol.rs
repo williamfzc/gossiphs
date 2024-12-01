@@ -12,6 +12,7 @@ use tree_sitter::Range;
 pub enum SymbolKind {
     DEF,
     REF,
+    NAMESPACE,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -90,6 +91,15 @@ impl Symbol {
             file,
             name,
             kind: SymbolKind::REF,
+            range: RangeWrapper::from(range),
+        }
+    }
+
+    pub fn new_namespace(file: String, name: String, range: Range) -> Symbol {
+        Symbol {
+            file,
+            name,
+            kind: SymbolKind::NAMESPACE,
             range: RangeWrapper::from(range),
         }
     }

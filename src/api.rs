@@ -119,6 +119,7 @@ impl Graph {
                 .list_definitions_by_reference(&symbol.id())
                 .into_iter()
                 .collect(),
+            _ => HashMap::new(),
         }
     }
 

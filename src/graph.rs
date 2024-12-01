@@ -4,6 +4,7 @@ use cupido::collector::config::Collect;
 use cupido::collector::config::{get_collector, Config};
 use cupido::relation::graph::RelationGraph as CupidoRelationGraph;
 use indicatif::ProgressBar;
+use pyo3::{pyclass, pymethods};
 use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
 use regex::Regex;
@@ -12,12 +13,31 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
-use pyo3::{pyclass, pymethods};
 use tracing::{debug, info};
 
 pub struct FileContext {
     pub path: String,
     pub symbols: Vec<Symbol>,
+}
+
+pub struct NamespaceManager<'a> {
+    namespaces: Vec<&'a Symbol>,
+}
+
+impl<'a> NamespaceManager<'a> {
+    pub fn new(namespaces: Vec<&'a Symbol>) -> Self {
+        NamespaceManager { namespaces }
+    }
+
+    pub fn get_line_depth(&self, line: usize) -> usize {
+        let mut depth = 0;
+        for namespace in &self.namespaces {
+            if namespace.range.start_point.row < line && line < namespace.range.end_point.row {
+                depth += 1;
+            }
+        }
+        depth
+    }
 }
 
 #[pyclass]
@@ -45,7 +65,8 @@ impl Graph {
         if file_content.is_empty() {
             return None;
         }
-        match file_extension.as_str() {
+
+        let file_context_result = match file_extension.as_str() {
             "rs" => {
                 let symbols = Extractor::Rust.extract(file_name, file_content);
                 let file_context = FileContext {
@@ -125,6 +146,48 @@ impl Graph {
                 Some(file_context)
             }
             _ => None,
+        };
+
+        if let Some(mut file_context) = file_context_result {
+            let namespaces: Vec<_> = file_context
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.kind == SymbolKind::NAMESPACE)
+                .collect();
+
+            if !namespaces.is_empty() {
+                let namespace_manager = NamespaceManager::new(namespaces);
+
+                file_context.symbols = file_context
+                    .symbols
+                    .iter()
+                    .filter_map(|symbol| {
+                        if symbol.kind == SymbolKind::NAMESPACE {
+                            return None;
+                        }
+
+                        let line = symbol.range.start_point.row;
+                        let depth = namespace_manager.get_line_depth(line);
+
+                        match symbol.kind {
+                            SymbolKind::DEF => {
+                                // nested def
+                                if depth > 0 {
+                                    return None;
+                                }
+
+                                return Some(symbol);
+                            }
+                            _ => Some(symbol),
+                        }
+                    })
+                    .map(|f| f.clone())
+                    .collect();
+            }
+
+            Some(file_context)
+        } else {
+            None
         }
     }
 
@@ -172,16 +235,21 @@ impl Graph {
             .iter()
             .flat_map(|file_context| file_context.symbols.iter())
             .for_each(|symbol| {
-                if symbol.kind == SymbolKind::DEF {
-                    global_def_symbol_table
-                        .entry(symbol.name.clone())
-                        .or_insert_with(Vec::new)
-                        .push(symbol.clone());
-                } else {
-                    global_ref_symbol_table
-                        .entry(symbol.name.clone())
-                        .or_insert_with(Vec::new)
-                        .push(symbol.clone());
+                match symbol.kind {
+                    SymbolKind::DEF => {
+                        global_def_symbol_table
+                            .entry(symbol.name.clone())
+                            .or_insert_with(Vec::new)
+                            .push(symbol.clone());
+                    }
+                    SymbolKind::REF => {
+                        global_ref_symbol_table
+                            .entry(symbol.name.clone())
+                            .or_insert_with(Vec::new)
+                            .push(symbol.clone());
+                    }
+                    // ignore
+                    SymbolKind::NAMESPACE => {}
                 }
             });
         (global_def_symbol_table, global_ref_symbol_table)
@@ -207,7 +275,7 @@ impl Graph {
                 .filter(|symbol| {
                     // def but no ref
                     if !global_ref_symbol_table.contains_key(&symbol.name) {
-                        return true;
+                        return false;
                     }
                     return true;
                 })
@@ -431,7 +499,6 @@ pub struct RelatedSymbol {
     #[pyo3(get)]
     pub(crate) weight: usize,
 }
-
 
 fn create_cupido_graph(
     project_path: &String,

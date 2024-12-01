@@ -14,6 +14,8 @@ pub enum Extractor {
     Swift,
 }
 
+const DEFAULT_NAMESPACE_REPR: &str = "<NS>";
+
 impl Extractor {
     pub fn extract(&self, f: &String, s: &String) -> Vec<Symbol> {
         match self {
@@ -106,6 +108,30 @@ impl Extractor {
             }
         }
 
+        // namespace
+        {
+            if !rule.namespace_grammar.is_empty() {
+                let query = Query::new(language, rule.namespace_grammar).unwrap();
+                let mut cursor = QueryCursor::new();
+                let matches = cursor.matches(&query, tree.root_node(), s.as_bytes());
+                for mat in matches {
+                    let matched_node = mat.captures[0].node;
+                    let range = matched_node.range();
+
+                    let ref_node = Symbol::new_namespace(
+                        f.clone(),
+                        // empty string will break some func
+                        String::from(DEFAULT_NAMESPACE_REPR),
+                        range,
+                    );
+                    if taken.contains_key(&ref_node.id()) {
+                        continue;
+                    }
+                    ret.push(ref_node);
+                }
+            }
+        }
+
         ret
     }
 }
@@ -113,6 +139,7 @@ impl Extractor {
 #[cfg(test)]
 mod tests {
     use crate::extractor::Extractor;
+    use crate::symbol::SymbolKind;
     use std::fs;
     use tracing::info;
 
