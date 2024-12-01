@@ -1,5 +1,4 @@
 use crate::extractor::Extractor;
-use crate::rule::{get_rule, Rule};
 use crate::symbol::{Symbol, SymbolGraph, SymbolKind};
 use cupido::collector::config::Collect;
 use cupido::collector::config::{get_collector, Config};
@@ -52,7 +51,7 @@ impl Graph {
     fn extract_file_context(
         file_name: &String,
         file_path: &String,
-        symbol_limit: usize,
+        _symbol_limit: usize,
     ) -> Option<FileContext> {
         let file_extension = match file_name.split('.').last() {
             Some(ext) => ext.to_lowercase(),
@@ -67,142 +66,73 @@ impl Graph {
             return None;
         }
 
-        let using_rule: Option<Rule>;
-        let file_context_result = match file_extension.as_str() {
-            "rs" => {
-                let symbols = Extractor::Rust.extract(file_name, file_content);
-                let file_context = FileContext {
-                    // use the relative path as key
-                    path: file_name.clone(),
-                    symbols,
-                };
-                using_rule = Option::from(get_rule(&Extractor::Rust));
-                Some(file_context)
-            }
-            "ts" | "tsx" => {
-                let symbols = Extractor::TypeScript.extract(file_name, file_content);
-                let file_context = FileContext {
-                    // use the relative path as key
-                    path: file_name.clone(),
-                    symbols,
-                };
-                using_rule = Option::from(get_rule(&Extractor::TypeScript));
-                Some(file_context)
-            }
-            "go" => {
-                let mut symbols = Extractor::Go.extract(file_name, file_content);
-                if symbols.len() > symbol_limit {
-                    symbols = symbols
-                        .into_iter()
-                        .filter(|each| each.name.chars().next().unwrap().is_uppercase())
-                        .collect();
-                }
-                let file_context = FileContext {
-                    // use the relative path as key
-                    path: file_name.clone(),
-                    symbols,
-                };
-                using_rule = Option::from(get_rule(&Extractor::Go));
-                Some(file_context)
-            }
-            "py" => {
-                let symbols = Extractor::Python.extract(file_name, file_content);
-                let file_context = FileContext {
-                    // use the relative path as key
-                    path: file_name.clone(),
-                    symbols,
-                };
-                using_rule = Option::from(get_rule(&Extractor::Python));
-                Some(file_context)
-            }
-            "js" | "jsx" => {
-                let symbols = Extractor::JavaScript.extract(file_name, file_content);
-                let file_context = FileContext {
-                    // use the relative path as key
-                    path: file_name.clone(),
-                    symbols,
-                };
-                using_rule = Option::from(get_rule(&Extractor::JavaScript));
-                Some(file_context)
-            }
-            "java" => {
-                let symbols = Extractor::Java.extract(file_name, file_content);
-                let file_context = FileContext {
-                    // use the relative path as key
-                    path: file_name.clone(),
-                    symbols,
-                };
-                using_rule = Option::from(get_rule(&Extractor::Java));
-                Some(file_context)
-            }
-            "kt" => {
-                let symbols = Extractor::Kotlin.extract(file_name, file_content);
-                let file_context = FileContext {
-                    // use the relative path as key
-                    path: file_name.clone(),
-                    symbols,
-                };
-                using_rule = Option::from(get_rule(&Extractor::Kotlin));
-                Some(file_context)
-            }
-            "swift" => {
-                let symbols = Extractor::Swift.extract(file_name, file_content);
-                let file_context = FileContext {
-                    // use the relative path as key
-                    path: file_name.clone(),
-                    symbols,
-                };
-                using_rule = Option::from(get_rule(&Extractor::Swift));
-                Some(file_context)
-            }
-            _ => {
-                using_rule = None;
-                None
-            }
-        };
+        let extractor_mapping: HashMap<&str, &Extractor> = [
+            ("rs", &Extractor::Rust),
+            ("ts", &Extractor::TypeScript),
+            ("tsx", &Extractor::TypeScript),
+            ("go", &Extractor::Go),
+            ("py", &Extractor::Python),
+            ("js", &Extractor::JavaScript),
+            ("jsx", &Extractor::JavaScript),
+            ("java", &Extractor::Java),
+            ("kt", &Extractor::Kotlin),
+            ("swift", &Extractor::Swift),
+        ]
+        .into_iter()
+        .collect();
 
-        if let Some(mut file_context) = file_context_result {
-            let rule = using_rule.unwrap();
+        if let Some(extractor) = extractor_mapping.get(file_extension.as_str()) {
+            let symbols = extractor.extract(file_name, file_content);
+            let mut file_context = FileContext {
+                // use the relative path as key
+                path: file_name.clone(),
+                symbols,
+            };
+
+            // further steps
+            let rule = extractor.get_rule();
             if rule.namespace_filter_level == 0 {
                 // do not filter
                 return Some(file_context);
             }
 
+            // start namespace pruning
             let namespaces: Vec<_> = file_context
                 .symbols
                 .iter()
                 .filter(|symbol| symbol.kind == SymbolKind::NAMESPACE)
                 .collect();
 
-            if !namespaces.is_empty() {
-                let namespace_manager = NamespaceManager::new(namespaces);
-
-                file_context.symbols = file_context
-                    .symbols
-                    .iter()
-                    .filter_map(|symbol| {
-                        if symbol.kind == SymbolKind::NAMESPACE {
-                            return None;
-                        }
-
-                        let line = symbol.range.start_point.row;
-                        let depth = namespace_manager.get_line_depth(line);
-
-                        match symbol.kind {
-                            SymbolKind::DEF => {
-                                // nested def
-                                if depth >= rule.namespace_filter_level {
-                                    return None;
-                                }
-
-                                return Some(symbol);
-                            }
-                            _ => Some(symbol),
-                        }
-                    })
-                    .map(|f| f.clone())
-                    .collect();
+            if namespaces.is_empty() {
+                return Some(file_context);
             }
+
+            let namespace_manager = NamespaceManager::new(namespaces);
+            file_context.symbols = file_context
+                .symbols
+                .iter()
+                .filter_map(|symbol| {
+                    if symbol.kind == SymbolKind::NAMESPACE {
+                        return None;
+                    }
+
+                    let line = symbol.range.start_point.row;
+                    let depth = namespace_manager.get_line_depth(line);
+
+                    match symbol.kind {
+                        SymbolKind::DEF => {
+                            // nested def
+                            if depth >= rule.namespace_filter_level {
+                                return None;
+                            }
+
+                            return Some(symbol);
+                        }
+                        _ => Some(symbol),
+                    }
+                })
+                .map(|f| f.clone())
+                .collect();
 
             Some(file_context)
         } else {

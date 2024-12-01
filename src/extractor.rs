@@ -1,4 +1,4 @@
-use crate::rule::get_rule;
+use crate::rule::{get_rule, Rule};
 use crate::symbol::Symbol;
 use std::collections::HashMap;
 use tree_sitter::{Language, Parser, Query, QueryCursor};
@@ -17,6 +17,9 @@ pub enum Extractor {
 const DEFAULT_NAMESPACE_REPR: &str = "<NS>";
 
 impl Extractor {
+    pub fn get_rule(&self) -> Rule {
+        get_rule(self)
+    }
     pub fn extract(&self, f: &String, s: &String) -> Vec<Symbol> {
         match self {
             Extractor::Rust => {
