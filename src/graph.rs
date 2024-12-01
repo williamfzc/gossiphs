@@ -1,4 +1,5 @@
 use crate::extractor::Extractor;
+use crate::rule::{get_rule, Rule};
 use crate::symbol::{Symbol, SymbolGraph, SymbolKind};
 use cupido::collector::config::Collect;
 use cupido::collector::config::{get_collector, Config};
@@ -66,6 +67,7 @@ impl Graph {
             return None;
         }
 
+        let using_rule: Option<Rule>;
         let file_context_result = match file_extension.as_str() {
             "rs" => {
                 let symbols = Extractor::Rust.extract(file_name, file_content);
@@ -74,6 +76,7 @@ impl Graph {
                     path: file_name.clone(),
                     symbols,
                 };
+                using_rule = Option::from(get_rule(&Extractor::Rust));
                 Some(file_context)
             }
             "ts" | "tsx" => {
@@ -83,6 +86,7 @@ impl Graph {
                     path: file_name.clone(),
                     symbols,
                 };
+                using_rule = Option::from(get_rule(&Extractor::TypeScript));
                 Some(file_context)
             }
             "go" => {
@@ -98,6 +102,7 @@ impl Graph {
                     path: file_name.clone(),
                     symbols,
                 };
+                using_rule = Option::from(get_rule(&Extractor::Go));
                 Some(file_context)
             }
             "py" => {
@@ -107,6 +112,7 @@ impl Graph {
                     path: file_name.clone(),
                     symbols,
                 };
+                using_rule = Option::from(get_rule(&Extractor::Python));
                 Some(file_context)
             }
             "js" | "jsx" => {
@@ -116,6 +122,7 @@ impl Graph {
                     path: file_name.clone(),
                     symbols,
                 };
+                using_rule = Option::from(get_rule(&Extractor::JavaScript));
                 Some(file_context)
             }
             "java" => {
@@ -125,6 +132,7 @@ impl Graph {
                     path: file_name.clone(),
                     symbols,
                 };
+                using_rule = Option::from(get_rule(&Extractor::Java));
                 Some(file_context)
             }
             "kt" => {
@@ -134,6 +142,7 @@ impl Graph {
                     path: file_name.clone(),
                     symbols,
                 };
+                using_rule = Option::from(get_rule(&Extractor::Kotlin));
                 Some(file_context)
             }
             "swift" => {
@@ -143,12 +152,22 @@ impl Graph {
                     path: file_name.clone(),
                     symbols,
                 };
+                using_rule = Option::from(get_rule(&Extractor::Swift));
                 Some(file_context)
             }
-            _ => None,
+            _ => {
+                using_rule = None;
+                None
+            }
         };
 
         if let Some(mut file_context) = file_context_result {
+            let rule = using_rule.unwrap();
+            if rule.namespace_filter_level == 0 {
+                // do not filter
+                return Some(file_context);
+            }
+
             let namespaces: Vec<_> = file_context
                 .symbols
                 .iter()
@@ -172,7 +191,7 @@ impl Graph {
                         match symbol.kind {
                             SymbolKind::DEF => {
                                 // nested def
-                                if depth > 0 {
+                                if depth >= rule.namespace_filter_level {
                                     return None;
                                 }
 
