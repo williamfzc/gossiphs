@@ -69,7 +69,7 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (interface_declaration) @body
 (method_definition) @body
 "#,
-            namespace_filter_level: 2,
+            namespace_filter_level: 1,
         },
 
         Extractor::Go => Rule {
