@@ -2,6 +2,8 @@ use clap::Parser;
 use csv::Writer;
 use git2::build::CheckoutBuilder;
 use git2::{Commit, DiffOptions, Error, Object, ObjectType, Repository, Status};
+use gossiphs::api::RelatedFileContext;
+use gossiphs::graph::{Graph, GraphConfig};
 use gossiphs::server::{server_main, ServerConfig};
 use indicatif::ProgressBar;
 use inquire::Text;
@@ -15,8 +17,6 @@ use std::io::Write;
 use std::path::Path;
 use termtree::Tree;
 use tracing::{debug, info};
-use gossiphs::api::RelatedFileContext;
-use gossiphs::graph::{Graph, GraphConfig};
 
 #[derive(Parser, Debug)]
 #[clap(
@@ -75,6 +75,9 @@ struct CommonOptions {
 
     #[clap(long)]
     exclude_author_regex: Option<String>,
+
+    #[clap(long)]
+    symbol_len_limit: Option<usize>,
 }
 
 impl CommonOptions {
@@ -87,6 +90,7 @@ impl CommonOptions {
             depth: None,
             exclude_file_regex: None,
             exclude_author_regex: None,
+            symbol_len_limit: None,
         }
     }
 }
@@ -262,6 +266,9 @@ fn handle_relation(relation_cmd: RelationCommand) {
         config.exclude_file_regex = exclude;
     }
     config.exclude_author_regex = relation_cmd.common_options.exclude_author_regex.clone();
+    if let Some(symbol_len_limit) = relation_cmd.common_options.symbol_len_limit {
+        config.symbol_len_limit = symbol_len_limit;
+    }
 
     let g = Graph::from(config);
 

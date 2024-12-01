@@ -4,6 +4,7 @@ use cupido::collector::config::Collect;
 use cupido::collector::config::{get_collector, Config};
 use cupido::relation::graph::RelationGraph as CupidoRelationGraph;
 use indicatif::ProgressBar;
+use pyo3::{pyclass, pymethods};
 use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
 use regex::Regex;
@@ -12,12 +13,31 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
-use pyo3::{pyclass, pymethods};
 use tracing::{debug, info};
 
 pub struct FileContext {
     pub path: String,
     pub symbols: Vec<Symbol>,
+}
+
+pub struct NamespaceManager<'a> {
+    namespaces: Vec<&'a Symbol>,
+}
+
+impl<'a> NamespaceManager<'a> {
+    pub fn new(namespaces: Vec<&'a Symbol>) -> Self {
+        NamespaceManager { namespaces }
+    }
+
+    pub fn get_line_depth(&self, line: usize) -> usize {
+        let mut depth = 0;
+        for namespace in &self.namespaces {
+            if namespace.range.start_point.row < line && line < namespace.range.end_point.row {
+                depth += 1;
+            }
+        }
+        depth
+    }
 }
 
 #[pyclass]
@@ -31,7 +51,7 @@ impl Graph {
     fn extract_file_context(
         file_name: &String,
         file_path: &String,
-        symbol_limit: usize,
+        _symbol_limit: usize,
     ) -> Option<FileContext> {
         let file_extension = match file_name.split('.').last() {
             Some(ext) => ext.to_lowercase(),
@@ -45,86 +65,78 @@ impl Graph {
         if file_content.is_empty() {
             return None;
         }
-        match file_extension.as_str() {
-            "rs" => {
-                let symbols = Extractor::Rust.extract(file_name, file_content);
-                let file_context = FileContext {
-                    // use the relative path as key
-                    path: file_name.clone(),
-                    symbols,
-                };
-                Some(file_context)
+
+        let extractor_mapping: HashMap<&str, &Extractor> = [
+            ("rs", &Extractor::Rust),
+            ("ts", &Extractor::TypeScript),
+            ("tsx", &Extractor::TypeScript),
+            ("go", &Extractor::Go),
+            ("py", &Extractor::Python),
+            ("js", &Extractor::JavaScript),
+            ("jsx", &Extractor::JavaScript),
+            ("java", &Extractor::Java),
+            ("kt", &Extractor::Kotlin),
+            ("swift", &Extractor::Swift),
+        ]
+        .into_iter()
+        .collect();
+
+        if let Some(extractor) = extractor_mapping.get(file_extension.as_str()) {
+            let symbols = extractor.extract(file_name, file_content);
+            let mut file_context = FileContext {
+                // use the relative path as key
+                path: file_name.clone(),
+                symbols,
+            };
+
+            // further steps
+            let rule = extractor.get_rule();
+            if rule.namespace_filter_level == 0 {
+                // do not filter
+                return Some(file_context);
             }
-            "ts" | "tsx" => {
-                let symbols = Extractor::TypeScript.extract(file_name, file_content);
-                let file_context = FileContext {
-                    // use the relative path as key
-                    path: file_name.clone(),
-                    symbols,
-                };
-                Some(file_context)
+
+            // start namespace pruning
+            let namespaces: Vec<_> = file_context
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.kind == SymbolKind::NAMESPACE)
+                .collect();
+
+            if namespaces.is_empty() {
+                return Some(file_context);
             }
-            "go" => {
-                let mut symbols = Extractor::Go.extract(file_name, file_content);
-                if symbols.len() > symbol_limit {
-                    symbols = symbols
-                        .into_iter()
-                        .filter(|each| each.name.chars().next().unwrap().is_uppercase())
-                        .collect();
-                }
-                let file_context = FileContext {
-                    // use the relative path as key
-                    path: file_name.clone(),
-                    symbols,
-                };
-                Some(file_context)
-            }
-            "py" => {
-                let symbols = Extractor::Python.extract(file_name, file_content);
-                let file_context = FileContext {
-                    // use the relative path as key
-                    path: file_name.clone(),
-                    symbols,
-                };
-                Some(file_context)
-            }
-            "js" | "jsx" => {
-                let symbols = Extractor::JavaScript.extract(file_name, file_content);
-                let file_context = FileContext {
-                    // use the relative path as key
-                    path: file_name.clone(),
-                    symbols,
-                };
-                Some(file_context)
-            }
-            "java" => {
-                let symbols = Extractor::Java.extract(file_name, file_content);
-                let file_context = FileContext {
-                    // use the relative path as key
-                    path: file_name.clone(),
-                    symbols,
-                };
-                Some(file_context)
-            }
-            "kt" => {
-                let symbols = Extractor::Kotlin.extract(file_name, file_content);
-                let file_context = FileContext {
-                    // use the relative path as key
-                    path: file_name.clone(),
-                    symbols,
-                };
-                Some(file_context)
-            }
-            "swift" => {
-                let symbols = Extractor::Swift.extract(file_name, file_content);
-                let file_context = FileContext {
-                    // use the relative path as key
-                    path: file_name.clone(),
-                    symbols,
-                };
-                Some(file_context)
-            }
-            _ => None,
+
+            let namespace_manager = NamespaceManager::new(namespaces);
+            file_context.symbols = file_context
+                .symbols
+                .iter()
+                .filter_map(|symbol| {
+                    if symbol.kind == SymbolKind::NAMESPACE {
+                        return None;
+                    }
+
+                    let line = symbol.range.start_point.row;
+                    let depth = namespace_manager.get_line_depth(line);
+
+                    match symbol.kind {
+                        SymbolKind::DEF => {
+                            // nested def
+                            if depth >= rule.namespace_filter_level {
+                                return None;
+                            }
+
+                            return Some(symbol);
+                        }
+                        _ => Some(symbol),
+                    }
+                })
+                .map(|f| f.clone())
+                .collect();
+
+            Some(file_context)
+        } else {
+            None
         }
     }
 
@@ -172,16 +184,21 @@ impl Graph {
             .iter()
             .flat_map(|file_context| file_context.symbols.iter())
             .for_each(|symbol| {
-                if symbol.kind == SymbolKind::DEF {
-                    global_def_symbol_table
-                        .entry(symbol.name.clone())
-                        .or_insert_with(Vec::new)
-                        .push(symbol.clone());
-                } else {
-                    global_ref_symbol_table
-                        .entry(symbol.name.clone())
-                        .or_insert_with(Vec::new)
-                        .push(symbol.clone());
+                match symbol.kind {
+                    SymbolKind::DEF => {
+                        global_def_symbol_table
+                            .entry(symbol.name.clone())
+                            .or_insert_with(Vec::new)
+                            .push(symbol.clone());
+                    }
+                    SymbolKind::REF => {
+                        global_ref_symbol_table
+                            .entry(symbol.name.clone())
+                            .or_insert_with(Vec::new)
+                            .push(symbol.clone());
+                    }
+                    // ignore
+                    SymbolKind::NAMESPACE => {}
                 }
             });
         (global_def_symbol_table, global_ref_symbol_table)
@@ -191,6 +208,7 @@ impl Graph {
         file_contexts: &Vec<FileContext>,
         global_def_symbol_table: &HashMap<String, Vec<Symbol>>,
         global_ref_symbol_table: &HashMap<String, Vec<Symbol>>,
+        symbol_len_limit: usize,
     ) -> Vec<FileContext> {
         let mut filtered_file_contexts = Vec::new();
         for file_context in file_contexts {
@@ -207,9 +225,12 @@ impl Graph {
                 .filter(|symbol| {
                     // def but no ref
                     if !global_ref_symbol_table.contains_key(&symbol.name) {
-                        return true;
+                        return false;
                     }
                     return true;
+                })
+                .filter(|symbol| {
+                    return symbol.name.len() > symbol_len_limit;
                 })
                 .map(|symbol| symbol.clone())
                 .collect();
@@ -262,6 +283,7 @@ impl Graph {
             &file_contexts,
             &global_def_symbol_table,
             &global_ref_symbol_table,
+            conf.symbol_len_limit,
         );
 
         // building graph
@@ -432,7 +454,6 @@ pub struct RelatedSymbol {
     pub(crate) weight: usize,
 }
 
-
 fn create_cupido_graph(
     project_path: &String,
     depth: u32,
@@ -456,7 +477,7 @@ pub struct GraphConfig {
     #[pyo3(get, set)]
     pub project_path: String,
 
-    // a ref can only belong to limit def
+    // if a def has been referenced over `def_limit` times, it will be ignored.
     #[pyo3(get, set)]
     pub def_limit: usize,
 
@@ -476,6 +497,10 @@ pub struct GraphConfig {
     #[pyo3(get, set)]
     pub symbol_limit: usize,
 
+    // if a symbol len <= `symbol_len_limit`, it will be ignored.
+    #[pyo3(get, set)]
+    pub symbol_len_limit: usize,
+
     #[pyo3(get, set)]
     pub exclude_file_regex: String,
     #[pyo3(get, set)]
@@ -494,6 +519,7 @@ impl GraphConfig {
             commit_size_limit_ratio: 1.0,
             depth: 10240,
             symbol_limit: 4096,
+            symbol_len_limit: 0,
             exclude_file_regex: String::new(),
             exclude_author_regex: None,
             exclude_commit_regex: None,

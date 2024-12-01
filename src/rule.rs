@@ -9,6 +9,10 @@ pub struct Rule {
     pub(crate) import_grammar: &'static str,
     // which symbols has been exported from this file
     pub(crate) export_grammar: &'static str,
+
+    // namespace control
+    pub(crate) namespace_grammar: &'static str,
+    pub(crate) namespace_filter_level: usize,
 }
 
 pub fn get_rule(extractor_type: &Extractor) -> Rule {
@@ -36,6 +40,11 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
   function: (scoped_identifier
     name: (identifier) @exported_symbol))
 "#,
+            namespace_grammar: r#"
+(function_item) @body
+(generic_function) @body
+"#,
+            namespace_filter_level: 1,
         },
 
         Extractor::TypeScript => Rule {
@@ -54,6 +63,13 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (export_specifier (identifier) @exported_symbol)
 (lexical_declaration (variable_declarator name: (identifier) @lexical_symbol))
 "#,
+            namespace_grammar: r#"
+(class_declaration) @body
+(function_declaration) @body
+(interface_declaration) @body
+(method_definition) @body
+"#,
+            namespace_filter_level: 1,
         },
 
         Extractor::Go => Rule {
@@ -70,6 +86,11 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (const_spec name: (identifier) @exported_symbol)
 (var_spec name: (identifier) @exported_symbol)
 "#,
+            namespace_grammar: r#"
+(function_declaration) @body
+(method_declaration) @body
+"#,
+            namespace_filter_level: 1,
         },
 
         Extractor::Python => Rule {
@@ -80,6 +101,11 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (function_definition name: (identifier) @exported_symbol)
 (class_definition name: (identifier) @exported_symbol)
 "#,
+            namespace_grammar: r#"
+(function_definition) @body
+(class_definition) @body
+"#,
+            namespace_filter_level: 2,
         },
 
         Extractor::JavaScript => Rule {
@@ -90,6 +116,11 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (function_declaration name: (identifier) @exported_symbol)
 (class_declaration name: (identifier) @exported_symbol)
     "#,
+            namespace_grammar: r#"
+(function_declaration) @body
+(class_declaration) @body
+"#,
+            namespace_filter_level: 2,
         },
         Extractor::Java => Rule {
             import_grammar: r#"
@@ -99,6 +130,10 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
             export_grammar: r#"
 (class_declaration name: (identifier) @exported_symbol)
   "#,
+            namespace_grammar: r#"
+(class_declaration) @body
+"#,
+            namespace_filter_level: 1,
         },
 
         Extractor::Kotlin => Rule {
@@ -109,6 +144,8 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (class_declaration (type_identifier) @exported_symbol)
 (function_declaration (simple_identifier) @exported_symbol)
   "#,
+            namespace_grammar: "",
+            namespace_filter_level: 0,
         },
 
         Extractor::Swift => Rule {
@@ -119,6 +156,8 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
             export_grammar: r#"
 (function_declaration (simple_identifier) @method)
   "#,
+            namespace_grammar: "",
+            namespace_filter_level: 0,
         },
     }
 }

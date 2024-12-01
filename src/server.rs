@@ -111,7 +111,7 @@ async fn symbol_relation_handler(
         .symbols
         .into_iter()
         .filter(|each| {
-            return each.range.start_byte == params.start_byte;
+            return each.range.start_byte == params.start_byte && each.kind != SymbolKind::NAMESPACE;
         })
         .collect();
     if targets.len() == 0 {
@@ -122,6 +122,8 @@ async fn symbol_relation_handler(
     let symbol_map = match target.kind {
         SymbolKind::DEF => g.symbol_graph.list_references_by_definition(&target.id()),
         SymbolKind::REF => g.symbol_graph.list_definitions_by_reference(&target.id()),
+        // never
+        _ => HashMap::new(),
     };
     let str_symbol_map: HashMap<String, usize> = symbol_map
         .into_iter()
