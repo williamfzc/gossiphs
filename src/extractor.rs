@@ -142,7 +142,6 @@ impl Extractor {
 #[cfg(test)]
 mod tests {
     use crate::extractor::Extractor;
-    use crate::symbol::SymbolKind;
     use std::fs;
     use tracing::info;
 
