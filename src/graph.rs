@@ -208,6 +208,7 @@ impl Graph {
         file_contexts: &Vec<FileContext>,
         global_def_symbol_table: &HashMap<String, Vec<Symbol>>,
         global_ref_symbol_table: &HashMap<String, Vec<Symbol>>,
+        symbol_len_limit: usize,
     ) -> Vec<FileContext> {
         let mut filtered_file_contexts = Vec::new();
         for file_context in file_contexts {
@@ -227,6 +228,9 @@ impl Graph {
                         return false;
                     }
                     return true;
+                })
+                .filter(|symbol| {
+                    return symbol.name.len() > symbol_len_limit;
                 })
                 .map(|symbol| symbol.clone())
                 .collect();
@@ -279,6 +283,7 @@ impl Graph {
             &file_contexts,
             &global_def_symbol_table,
             &global_ref_symbol_table,
+            conf.symbol_len_limit,
         );
 
         // building graph
@@ -472,7 +477,7 @@ pub struct GraphConfig {
     #[pyo3(get, set)]
     pub project_path: String,
 
-    // a ref can only belong to limit def
+    // if a def has been referenced over `def_limit` times, it will be ignored.
     #[pyo3(get, set)]
     pub def_limit: usize,
 
@@ -492,6 +497,10 @@ pub struct GraphConfig {
     #[pyo3(get, set)]
     pub symbol_limit: usize,
 
+    // if a symbol len <= `symbol_len_limit`, it will be ignored.
+    #[pyo3(get, set)]
+    pub symbol_len_limit: usize,
+
     #[pyo3(get, set)]
     pub exclude_file_regex: String,
     #[pyo3(get, set)]
@@ -510,6 +519,7 @@ impl GraphConfig {
             commit_size_limit_ratio: 1.0,
             depth: 10240,
             symbol_limit: 4096,
+            symbol_len_limit: 0,
             exclude_file_regex: String::new(),
             exclude_author_regex: None,
             exclude_commit_regex: None,
