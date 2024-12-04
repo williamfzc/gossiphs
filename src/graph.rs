@@ -10,9 +10,9 @@ use rayon::iter::ParallelIterator;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fs;
 use std::path::Path;
 use std::time::Instant;
+use git2::Repository;
 use tracing::{debug, info};
 
 pub struct FileContext {
@@ -50,21 +50,16 @@ pub struct Graph {
 impl Graph {
     fn extract_file_context(
         file_name: &String,
-        file_path: &String,
+        file_content: &String,
         _symbol_limit: usize,
     ) -> Option<FileContext> {
         let file_extension = match file_name.split('.').last() {
             Some(ext) => ext.to_lowercase(),
             None => {
-                debug!("File {} has no extension, skipping...", file_path);
+                debug!("File {} has no extension, skipping...", file_name);
                 return None;
             }
         };
-
-        let file_content = &fs::read_to_string(file_path).unwrap_or_default();
-        if file_content.is_empty() {
-            return None;
-        }
 
         let extractor_mapping: HashMap<&str, &Extractor> = [
             ("rs", &Extractor::Rust),
@@ -145,26 +140,29 @@ impl Graph {
         files: Vec<String>,
         symbol_limit: usize,
     ) -> Vec<FileContext> {
-        let filtered_files: Vec<(String, String)> = files
-            .iter()
-            .filter_map(|each_file| {
-                let file_path = &Path::new(&root)
-                    .join(each_file)
-                    .to_string_lossy()
-                    .into_owned();
-                if fs::metadata(file_path).is_err() {
+        let repo = Repository::open(root).unwrap();
+        let head = repo.head().unwrap();
+        let commit = head.peel_to_commit().unwrap();
+        let tree = commit.tree().unwrap();
+
+        let file_content_pairs: Vec<_> = files
+            .into_iter()
+            .filter_map(|file_path| {
+                let tree_entry = tree.get_path(Path::new(&file_path)).ok()?;
+                let blob = tree_entry.to_object(&repo).unwrap().peel_to_blob().unwrap();
+                if blob.is_binary() {
                     return None;
                 }
-                return Some((each_file.clone(), file_path.clone()));
-            })
-            .collect();
+                let content = std::str::from_utf8(blob.content()).unwrap();
+                Some((file_path, String::from(content)))
+            }).collect();
 
-        let pb = ProgressBar::new(filtered_files.len() as u64);
-        let file_contexts: Vec<FileContext> = filtered_files
+        let pb = ProgressBar::new(file_content_pairs.len() as u64);
+        let file_contexts: Vec<FileContext> = file_content_pairs
             .par_iter()
-            .map(|(each_file, file_path)| {
+            .map(|(file_path, file_content)| {
                 pb.inc(1);
-                return Graph::extract_file_context(each_file, file_path, symbol_limit);
+                return Graph::extract_file_context(file_path, file_content, symbol_limit);
             })
             .filter(|ctx| ctx.is_some())
             .map(|ctx| ctx.unwrap())
