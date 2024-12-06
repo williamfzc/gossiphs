@@ -3,6 +3,7 @@ use crate::symbol::{Symbol, SymbolGraph, SymbolKind};
 use cupido::collector::config::Collect;
 use cupido::collector::config::{get_collector, Config};
 use cupido::relation::graph::RelationGraph as CupidoRelationGraph;
+use git2::Repository;
 use indicatif::ProgressBar;
 use pyo3::{pyclass, pymethods};
 use rayon::iter::IntoParallelRefIterator;
@@ -12,7 +13,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::time::Instant;
-use git2::Repository;
 use tracing::{debug, info};
 
 pub struct FileContext {
@@ -155,7 +155,8 @@ impl Graph {
                 }
                 let content = std::str::from_utf8(blob.content()).unwrap();
                 Some((file_path, String::from(content)))
-            }).collect();
+            })
+            .collect();
 
         let pb = ProgressBar::new(file_content_pairs.len() as u64);
         let file_contexts: Vec<FileContext> = file_content_pairs
@@ -174,7 +175,11 @@ impl Graph {
 
     fn build_global_symbol_table(
         file_contexts: &[FileContext],
-    ) -> (HashMap<String, Vec<Symbol>>, HashMap<String, Vec<Symbol>>) {
+    ) -> (
+        HashMap<String, Vec<Symbol>>,
+        HashMap<String, Vec<Symbol>>,
+        HashMap<String, Vec<Symbol>>,
+    ) {
         let mut global_def_symbol_table: HashMap<String, Vec<Symbol>> = HashMap::new();
         let mut global_ref_symbol_table: HashMap<String, Vec<Symbol>> = HashMap::new();
 
@@ -199,7 +204,23 @@ impl Graph {
                     SymbolKind::NAMESPACE => {}
                 }
             });
-        (global_def_symbol_table, global_ref_symbol_table)
+
+        let global_unique_def_symbol_table: HashMap<_, _> = global_def_symbol_table
+            .iter()
+            .filter_map(|(name, symbols)| {
+                if symbols.len() == 1 {
+                    Some((name.clone(), symbols.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        (
+            global_def_symbol_table,
+            global_ref_symbol_table,
+            global_unique_def_symbol_table,
+        )
     }
 
     fn filter_pointless_symbols(
@@ -275,7 +296,7 @@ impl Graph {
         info!("symbol extract finished, files: {}", file_contexts.len());
 
         // filter pointless REF
-        let (global_def_symbol_table, global_ref_symbol_table) =
+        let (global_def_symbol_table, global_ref_symbol_table, global_unique_def_symbol_table) =
             Self::build_global_symbol_table(&file_contexts);
         let final_file_contexts = Self::filter_pointless_symbols(
             &file_contexts,
@@ -426,6 +447,38 @@ impl Graph {
             }
         }
         pb.finish_and_clear();
+
+        // check the graph and do some fallbacks
+        for file_context in &final_file_contexts {
+            let def_symbols: Vec<&Symbol> = file_context
+                .symbols
+                .iter()
+                .filter(|each| each.kind == SymbolKind::DEF)
+                .collect();
+
+            for each_def in def_symbols {
+                let refs = symbol_graph.list_references_by_definition(&each_def.id());
+
+                // no refs found
+                if refs.is_empty() {
+                    let fallback_defs = global_unique_def_symbol_table
+                        .get(&each_def.name)
+                        .cloned()
+                        .unwrap_or_else(Vec::new);
+
+                    // only one or zero
+                    for fallback_def in fallback_defs {
+                        global_ref_symbol_table
+                            .get(&each_def.name)
+                            .unwrap_or(&Vec::new())
+                            .iter()
+                            .for_each(|r| {
+                                symbol_graph.link_symbol_to_symbol(&fallback_def, r);
+                            })
+                    }
+                }
+            }
+        }
 
         info!(
             "symbol graph ready, nodes: {}, edges: {}",
