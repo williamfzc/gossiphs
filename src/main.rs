@@ -306,7 +306,7 @@ fn handle_relation(relation_cmd: RelationCommand) {
 
     // Write each row
     let pb = ProgressBar::new(files.len() as u64);
-    let results: Vec<(Vec<String>, Vec<String>)> = files
+    let results: HashMap<String, (Vec<String>, Vec<String>)> = files
         .par_iter()
         .map(|file| {
             pb.inc(1);
@@ -340,12 +340,18 @@ fn handle_relation(relation_cmd: RelationCommand) {
                 }
             }
 
-            (row, pair_row)
+            (file.clone(), (row, pair_row))
         })
         .collect();
     pb.finish_and_clear();
 
-    for (row, pair_row) in results {
+    // Sort results by the original order of files
+    let sorted_results: Vec<(Vec<String>, Vec<String>)> = files
+        .iter()
+        .map(|file| results.get(file).unwrap().clone())
+        .collect();
+
+    for (row, pair_row) in sorted_results {
         wtr.write_record(&row).expect("Failed to write record");
         if let Some(symbol_wtr) = symbol_wtr_opts.as_mut() {
             symbol_wtr
