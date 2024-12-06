@@ -566,7 +566,7 @@ impl GraphConfig {
     pub fn default() -> GraphConfig {
         GraphConfig {
             project_path: String::from("."),
-            def_limit: 4,
+            def_limit: 16,
             commit_size_limit_ratio: 1.0,
             depth: 10240,
             symbol_limit: 4096,
