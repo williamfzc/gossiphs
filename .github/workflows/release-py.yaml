@@ -176,6 +176,7 @@ jobs:
             gossiphs-macos-x86_64/*
             gossiphs-linux-x86_64/*
             gossiphs-windows-x64/*
+      - uses: actions/checkout@v4
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
