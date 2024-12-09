@@ -176,3 +176,10 @@ jobs:
             gossiphs-macos-x86_64/*
             gossiphs-linux-x86_64/*
             gossiphs-windows-x64/*
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - uses: katyo/publish-crates@v2
+        with:
+          registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
