@@ -280,6 +280,7 @@ impl Graph {
             conf.depth,
             conf.exclude_author_regex,
             conf.exclude_commit_regex,
+            conf.issue_regex,
         );
         let size = relation_graph.size();
         info!("relation graph ready, size: {:?}", size);
@@ -510,12 +511,16 @@ fn create_cupido_graph(
     depth: u32,
     exclude_author_regex: Option<String>,
     exclude_commit_regex: Option<String>,
+    issue_regex: Option<String>,
 ) -> CupidoRelationGraph {
     let mut conf = Config::default();
     conf.repo_path = project_path.parse().unwrap();
     conf.depth = depth;
     conf.author_exclude_regex = exclude_author_regex;
     conf.commit_exclude_regex = exclude_commit_regex;
+    if issue_regex.is_some() {
+        conf.issue_regex = issue_regex.unwrap();
+    }
 
     let collector = get_collector();
     let graph = collector.walk(conf);
@@ -558,6 +563,9 @@ pub struct GraphConfig {
     pub exclude_author_regex: Option<String>,
     #[pyo3(get, set)]
     pub exclude_commit_regex: Option<String>,
+
+    #[pyo3(get, set)]
+    pub issue_regex: Option<String>,
 }
 
 #[pymethods]
@@ -574,6 +582,7 @@ impl GraphConfig {
             exclude_file_regex: String::new(),
             exclude_author_regex: None,
             exclude_commit_regex: None,
+            issue_regex: None,
         }
     }
 }
@@ -683,5 +692,10 @@ mod tests {
                 pair.dst_symbol.range.start_point.row
             );
         });
+
+        let issues = g.list_file_issues(String::from("src/extractor.rs"));
+        let commits = g.list_file_commits(String::from("src/graph.rs"));
+        assert!(issues.len() > 0);
+        assert!(commits.len() > 0);
     }
 }

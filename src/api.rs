@@ -1,9 +1,9 @@
 use crate::graph::{Graph, RelatedSymbol};
 use crate::symbol::{DefRefPair, Symbol, SymbolKind};
+use pyo3::{pyclass, pymethods};
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
-use pyo3::{pyclass, pymethods};
 
 #[derive(Serialize, Deserialize, Clone)]
 #[pyclass]
@@ -131,11 +131,14 @@ impl Graph {
             .cloned()
             .collect();
 
-        let commit_sha_list = self._relation_graph.file_related_commits(&file_name).unwrap_or_default();
+        let commit_sha_list = self
+            ._relation_graph
+            .file_related_commits(&file_name)
+            .unwrap_or_default();
         FileMetadata {
             path: file_name,
             commits: commit_sha_list,
-            symbols
+            symbols,
         }
     }
 
@@ -144,5 +147,15 @@ impl Graph {
             return Vec::new();
         }
         self.symbol_graph.pairs_between_files(&src_file, &dst_file)
+    }
+
+    pub fn list_file_issues(&self, file_name: String) -> Vec<String> {
+        let result = self._relation_graph.file_related_issues(&file_name);
+        result.unwrap_or_default()
+    }
+
+    pub fn list_file_commits(&self, file_name: String) -> Vec<String> {
+        let result = self._relation_graph.file_related_commits(&file_name);
+        result.unwrap_or_default()
     }
 }
