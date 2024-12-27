@@ -10,13 +10,14 @@ use inquire::Text;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::IntoParallelRefIterator;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::path::Path;
 use termtree::Tree;
 use tracing::{debug, info};
+use gossiphs::symbol::{RangeWrapper, SymbolKind};
 
 #[derive(Parser, Debug)]
 #[clap(
@@ -129,6 +130,10 @@ struct RelationCommand {
     #[clap(long)]
     #[clap(default_value = "")]
     symbol_csv: String,
+
+    #[clap(long)]
+    #[clap(default_value = "")]
+    index_file: String,
 }
 
 #[derive(Parser, Debug)]
@@ -246,6 +251,137 @@ fn handle_relate(relate_cmd: RelateCommand) {
         fs::write(relate_cmd.json.unwrap(), json).expect("");
     } else {
         println!("{}", json);
+    }
+}
+
+fn handle_relation_v2(relation_cmd: RelationCommand) {
+    // https://github.com/williamfzc/gossiphs/issues/38
+    #[derive(Serialize)]
+    enum LineKind {
+        FileNode,
+        FileRelation,
+        SymbolNode,
+    }
+
+    #[derive(Serialize)]
+    struct FileNode {
+        id: usize,
+        kind: LineKind,
+        name: String,
+        issues: Vec<String>,
+    }
+
+    #[derive(Serialize)]
+    struct FileRelation {
+        id: usize,
+        kind: LineKind,
+        src: usize,
+        dst: usize,
+        symbols: Vec<usize>,
+    }
+
+    #[derive(Serialize)]
+    struct SymbolNode {
+        id: usize,
+        kind: LineKind,
+        name: String,
+        range: RangeWrapper,
+    }
+
+    let mut config = GraphConfig::default();
+    config.project_path = relation_cmd.common_options.project_path.clone();
+    if relation_cmd.common_options.strict {
+        config.def_limit = 1;
+    }
+    if relation_cmd.common_options.def_limit.is_some() {
+        config.def_limit = relation_cmd.common_options.def_limit.unwrap();
+    }
+
+    if let Some(depth) = relation_cmd.common_options.depth {
+        config.depth = depth;
+    }
+    if let Some(exclude) = relation_cmd.common_options.exclude_file_regex {
+        config.exclude_file_regex = exclude;
+    }
+    config.exclude_author_regex = relation_cmd.common_options.exclude_author_regex.clone();
+
+    let g = Graph::from(config);
+    let mut files: Vec<String> = g.files().into_iter().collect();
+    files.sort();
+    let file_id_map: HashMap<&String, usize> = files.iter().enumerate().map(|(i, file)| (file, i)).collect();
+
+    let pb = ProgressBar::new(files.len() as u64);
+    let results: HashMap<&String, Vec<RelatedFileContext>> = files
+        .par_iter()
+        .map(|file| {
+            pb.inc(1);
+            let related_files: Vec<RelatedFileContext> = g
+                .related_files(file.clone())
+                .into_iter()
+                .collect();
+            return (file, related_files);
+        }).collect();
+    pb.finish_and_clear();
+
+    let mut file_nodes: Vec<FileNode> = Vec::new();
+    let mut file_relations: Vec<FileRelation> = Vec::new();
+    for (file, id) in &file_id_map {
+        file_nodes.push(FileNode {
+            id: id.clone(),
+            kind: LineKind::FileNode,
+            name: file.to_string(),
+            issues: g.list_file_issues(file.to_string()),
+        });
+    }
+
+    let mut symbol_map: HashMap<String, SymbolNode> = HashMap::new();
+    let mut cur_id = file_nodes.len();
+    for (file, related_files) in &results {
+        let src_id = file_id_map[file];
+        for related_file in related_files {
+            if let Some(&dst_id) = file_id_map.get(&related_file.name) {
+                let symbols: Vec<usize> = related_file.related_symbols.iter().filter(|s| {
+                    s.symbol.kind == SymbolKind::DEF
+                }).map(|s| {
+                    let symbol_id = s.symbol.id();
+                    if !symbol_map.contains_key(&symbol_id) {
+                        symbol_map.insert(symbol_id, SymbolNode{
+                            id: cur_id,
+                            kind: LineKind::SymbolNode,
+                            name: s.symbol.name.clone(),
+                            range: s.symbol.range.clone(),
+                        });
+                        cur_id += 1;
+                        return cur_id - 1;
+                    } else {
+                        return symbol_map.get(&symbol_id).unwrap().id
+                    }
+                }).collect::<HashSet<_>>().into_iter().collect();
+                file_relations.push(FileRelation {
+                    id: cur_id,
+                    kind: LineKind::FileRelation,
+                    src: src_id,
+                    dst: dst_id,
+                    symbols,
+                });
+                cur_id += 1;
+            }
+        }
+    }
+
+    let mut writer = BufWriter::new(File::create("output.txt").expect("Unable to create file"));
+
+    for node in file_nodes {
+        let serialized = serde_json::to_string(&node).expect("Failed to serialize FileNode");
+        writeln!(writer, "{}", serialized).expect("Unable to write data");
+    }
+    for relation in file_relations {
+        let serialized = serde_json::to_string(&relation).expect("Failed to serialize FileRelation");
+        writeln!(writer, "{}", serialized).expect("Unable to write data");
+    }
+    for node in symbol_map.values() {
+        let serialized = serde_json::to_string(node).expect("Failed to serialize SymbolNode");
+        writeln!(writer, "{}", serialized).expect("Unable to write data");
     }
 }
 
@@ -760,5 +896,19 @@ fn relation_test() {
         common_options: config,
         csv: "ok.csv".to_string(),
         symbol_csv: "ok1.csv".to_string(),
+        index_file: "".to_string(),
+    })
+}
+
+#[test]
+fn relation_v2_test() {
+    let mut config = CommonOptions::default();
+    config.exclude_file_regex = Some("".parse().unwrap());
+    config.project_path = ".".parse().unwrap();
+    handle_relation_v2(RelationCommand {
+        common_options: config,
+        csv: "".to_string(),
+        symbol_csv: "".to_string(),
+        index_file: "hello.index".to_string(),
     })
 }

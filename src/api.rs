@@ -29,6 +29,9 @@ pub struct FileMetadata {
 
     #[pyo3(get)]
     pub symbols: Vec<Symbol>,
+
+    #[pyo3(get)]
+    pub issues: Vec<String>,
 }
 
 // Read API v1
@@ -84,6 +87,25 @@ impl Graph {
                 });
         });
 
+        definitions_in_file.iter().for_each(|def| {
+            self.symbol_graph
+                .list_references_by_definition(&def.id())
+                .into_iter()
+                .map(|s| s.0.file)
+                .for_each(|f| {
+                    file_ref_mapping.entry(f.clone()).and_modify(|v| {
+                        v.push(RelatedSymbol {
+                            symbol: def.clone(),
+                            weight: 0,
+                        })
+                    })
+                        .or_insert(vec![RelatedSymbol {
+                            symbol: def.clone(),
+                            weight: 0,
+                        }]);
+                });
+        });
+
         // this file -> other files
         // TODO: need it?
 
@@ -135,9 +157,16 @@ impl Graph {
             ._relation_graph
             .file_related_commits(&file_name)
             .unwrap_or_default();
+
+        let issue_list = self
+            ._relation_graph
+            .file_related_issues(&file_name)
+            .unwrap_or_default();
+
         FileMetadata {
             path: file_name,
             commits: commit_sha_list,
+            issues: issue_list,
             symbols,
         }
     }

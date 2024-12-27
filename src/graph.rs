@@ -500,10 +500,10 @@ impl Graph {
 #[pyclass]
 pub struct RelatedSymbol {
     #[pyo3(get)]
-    pub(crate) symbol: Symbol,
+    pub symbol: Symbol,
 
     #[pyo3(get)]
-    pub(crate) weight: usize,
+    pub weight: usize,
 }
 
 fn create_cupido_graph(
