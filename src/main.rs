@@ -5,6 +5,7 @@ use git2::{Commit, DiffOptions, Error, Object, ObjectType, Repository, Status};
 use gossiphs::api::RelatedFileContext;
 use gossiphs::graph::{Graph, GraphConfig};
 use gossiphs::server::{server_main, ServerConfig};
+use gossiphs::symbol::{RangeWrapper, SymbolKind};
 use indicatif::ProgressBar;
 use inquire::Text;
 use rayon::iter::ParallelIterator;
@@ -17,7 +18,6 @@ use std::io::{BufWriter, Write};
 use std::path::Path;
 use termtree::Tree;
 use tracing::{debug, info};
-use gossiphs::symbol::{RangeWrapper, SymbolKind};
 
 #[derive(Parser, Debug)]
 #[clap(
@@ -38,6 +38,9 @@ enum SubCommand {
 
     #[clap(name = "relation")]
     Relation(RelationCommand),
+
+    #[clap(name = "relation2")]
+    Relation2(RelationCommand),
 
     #[clap(name = "interactive")]
     Interactive(InteractiveCommand),
@@ -211,6 +214,7 @@ fn main() {
     match cli.cmd {
         SubCommand::Relate(search_cmd) => handle_relate(search_cmd),
         SubCommand::Relation(relation_cmd) => handle_relation(relation_cmd),
+        SubCommand::Relation2(relation_cmd) => handle_relation_v2(relation_cmd),
         SubCommand::Interactive(interactive_cmd) => handle_interactive(interactive_cmd),
         SubCommand::Server(server_cmd) => handle_server(server_cmd),
         SubCommand::Obsidian(obsidian_cmd) => handle_obsidian(obsidian_cmd),
@@ -256,6 +260,8 @@ fn handle_relate(relate_cmd: RelateCommand) {
 
 fn handle_relation_v2(relation_cmd: RelationCommand) {
     // https://github.com/williamfzc/gossiphs/issues/38
+    // node: file, symbol
+    // edge: file relation
     #[derive(Serialize)]
     enum LineKind {
         FileNode,
@@ -308,19 +314,22 @@ fn handle_relation_v2(relation_cmd: RelationCommand) {
     let g = Graph::from(config);
     let mut files: Vec<String> = g.files().into_iter().collect();
     files.sort();
-    let file_id_map: HashMap<&String, usize> = files.iter().enumerate().map(|(i, file)| (file, i)).collect();
+    let file_id_map: HashMap<&String, usize> = files
+        .iter()
+        .enumerate()
+        .map(|(i, file)| (file, i))
+        .collect();
 
     let pb = ProgressBar::new(files.len() as u64);
     let results: HashMap<&String, Vec<RelatedFileContext>> = files
         .par_iter()
         .map(|file| {
             pb.inc(1);
-            let related_files: Vec<RelatedFileContext> = g
-                .related_files(file.clone())
-                .into_iter()
-                .collect();
+            let related_files: Vec<RelatedFileContext> =
+                g.related_files(file.clone()).into_iter().collect();
             return (file, related_files);
-        }).collect();
+        })
+        .collect();
     pb.finish_and_clear();
 
     let mut file_nodes: Vec<FileNode> = Vec::new();
@@ -340,23 +349,31 @@ fn handle_relation_v2(relation_cmd: RelationCommand) {
         let src_id = file_id_map[file];
         for related_file in related_files {
             if let Some(&dst_id) = file_id_map.get(&related_file.name) {
-                let symbols: Vec<usize> = related_file.related_symbols.iter().filter(|s| {
-                    s.symbol.kind == SymbolKind::DEF
-                }).map(|s| {
-                    let symbol_id = s.symbol.id();
-                    if !symbol_map.contains_key(&symbol_id) {
-                        symbol_map.insert(symbol_id, SymbolNode{
-                            id: cur_id,
-                            kind: LineKind::SymbolNode,
-                            name: s.symbol.name.clone(),
-                            range: s.symbol.range.clone(),
-                        });
-                        cur_id += 1;
-                        return cur_id - 1;
-                    } else {
-                        return symbol_map.get(&symbol_id).unwrap().id
-                    }
-                }).collect::<HashSet<_>>().into_iter().collect();
+                let symbols: Vec<usize> = related_file
+                    .related_symbols
+                    .iter()
+                    .filter(|s| s.symbol.kind == SymbolKind::DEF)
+                    .map(|s| {
+                        let symbol_id = s.symbol.id();
+                        if !symbol_map.contains_key(&symbol_id) {
+                            symbol_map.insert(
+                                symbol_id,
+                                SymbolNode {
+                                    id: cur_id,
+                                    kind: LineKind::SymbolNode,
+                                    name: s.symbol.name.clone(),
+                                    range: s.symbol.range.clone(),
+                                },
+                            );
+                            cur_id += 1;
+                            return cur_id - 1;
+                        } else {
+                            return symbol_map.get(&symbol_id).unwrap().id;
+                        }
+                    })
+                    .collect::<HashSet<_>>()
+                    .into_iter()
+                    .collect();
                 file_relations.push(FileRelation {
                     id: cur_id,
                     kind: LineKind::FileRelation,
@@ -376,7 +393,8 @@ fn handle_relation_v2(relation_cmd: RelationCommand) {
         writeln!(writer, "{}", serialized).expect("Unable to write data");
     }
     for relation in file_relations {
-        let serialized = serde_json::to_string(&relation).expect("Failed to serialize FileRelation");
+        let serialized =
+            serde_json::to_string(&relation).expect("Failed to serialize FileRelation");
         writeln!(writer, "{}", serialized).expect("Unable to write data");
     }
     for node in symbol_map.values() {
