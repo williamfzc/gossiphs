@@ -1,6 +1,9 @@
 use crate::graph::{Graph, RelatedSymbol};
-use crate::symbol::{DefRefPair, Symbol, SymbolKind};
+use crate::symbol::{DefRefPair, RangeWrapper, Symbol, SymbolKind};
+use indicatif::ProgressBar;
 use pyo3::{pyclass, pymethods};
+use rayon::iter::IntoParallelRefIterator;
+use rayon::iter::ParallelIterator;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
@@ -32,6 +35,55 @@ pub struct FileMetadata {
 
     #[pyo3(get)]
     pub issues: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[pyclass]
+enum LineKind {
+    FileNode,
+    FileRelation,
+    SymbolNode,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[pyclass]
+pub struct FileNode {
+    id: usize,
+    kind: LineKind,
+    name: String,
+    issues: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[pyclass]
+pub struct FileRelation {
+    id: usize,
+    kind: LineKind,
+    src: usize,
+    dst: usize,
+    symbols: Vec<usize>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[pyclass]
+pub struct SymbolNode {
+    id: usize,
+    kind: LineKind,
+    name: String,
+    range: RangeWrapper,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[pyclass]
+pub struct RelationList {
+    #[pyo3(get)]
+    pub file_nodes: Vec<FileNode>,
+
+    #[pyo3(get)]
+    pub file_relations: Vec<FileRelation>,
+
+    #[pyo3(get)]
+    pub symbol_nodes: Vec<SymbolNode>,
 }
 
 // Read API v1
@@ -93,12 +145,14 @@ impl Graph {
                 .into_iter()
                 .map(|s| s.0.file)
                 .for_each(|f| {
-                    file_ref_mapping.entry(f.clone()).and_modify(|v| {
-                        v.push(RelatedSymbol {
-                            symbol: def.clone(),
-                            weight: 0,
+                    file_ref_mapping
+                        .entry(f.clone())
+                        .and_modify(|v| {
+                            v.push(RelatedSymbol {
+                                symbol: def.clone(),
+                                weight: 0,
+                            })
                         })
-                    })
                         .or_insert(vec![RelatedSymbol {
                             symbol: def.clone(),
                             weight: 0,
@@ -186,5 +240,90 @@ impl Graph {
     pub fn list_file_commits(&self, file_name: String) -> Vec<String> {
         let result = self._relation_graph.file_related_commits(&file_name);
         result.unwrap_or_default()
+    }
+
+    pub fn list_all_relations(&self) -> RelationList {
+        // https://github.com/williamfzc/gossiphs/issues/38
+        // node: file, symbol
+        // edge: file relation
+        let mut files: Vec<String> = self.files().into_iter().collect();
+        files.sort();
+        let file_id_map: HashMap<&String, usize> = files
+            .iter()
+            .enumerate()
+            .map(|(i, file)| (file, i))
+            .collect();
+
+        let pb = ProgressBar::new(files.len() as u64);
+        let results: HashMap<&String, Vec<RelatedFileContext>> = files
+            .par_iter()
+            .map(|file| {
+                pb.inc(1);
+                let related_files: Vec<RelatedFileContext> =
+                    self.related_files(file.clone()).into_iter().collect();
+                return (file, related_files);
+            })
+            .collect();
+        pb.finish_and_clear();
+
+        let mut file_nodes: Vec<FileNode> = Vec::new();
+        let mut file_relations: Vec<FileRelation> = Vec::new();
+        for (file, id) in &file_id_map {
+            file_nodes.push(FileNode {
+                id: id.clone(),
+                kind: LineKind::FileNode,
+                name: file.to_string(),
+                issues: self.list_file_issues(file.to_string()),
+            });
+        }
+
+        let mut symbol_map: HashMap<String, SymbolNode> = HashMap::new();
+        let mut cur_id = file_nodes.len();
+        for (file, related_files) in &results {
+            let src_id = file_id_map[file];
+            for related_file in related_files {
+                if let Some(&dst_id) = file_id_map.get(&related_file.name) {
+                    let symbols: Vec<usize> = related_file
+                        .related_symbols
+                        .iter()
+                        .filter(|s| s.symbol.kind == SymbolKind::DEF)
+                        .map(|s| {
+                            let symbol_id = s.symbol.id();
+                            if !symbol_map.contains_key(&symbol_id) {
+                                symbol_map.insert(
+                                    symbol_id,
+                                    SymbolNode {
+                                        id: cur_id,
+                                        kind: LineKind::SymbolNode,
+                                        name: s.symbol.name.clone(),
+                                        range: s.symbol.range.clone(),
+                                    },
+                                );
+                                cur_id += 1;
+                                return cur_id - 1;
+                            } else {
+                                return symbol_map.get(&symbol_id).unwrap().id;
+                            }
+                        })
+                        .collect::<HashSet<_>>()
+                        .into_iter()
+                        .collect();
+                    file_relations.push(FileRelation {
+                        id: cur_id,
+                        kind: LineKind::FileRelation,
+                        src: src_id,
+                        dst: dst_id,
+                        symbols,
+                    });
+                    cur_id += 1;
+                }
+            }
+        }
+
+        RelationList {
+            file_nodes,
+            file_relations,
+            symbol_nodes: symbol_map.values().cloned().collect(),
+        }
     }
 }
