@@ -39,7 +39,7 @@ pub struct FileMetadata {
 
 #[derive(Serialize, Deserialize, Clone)]
 #[pyclass]
-enum LineKind {
+pub enum LineKind {
     FileNode,
     FileRelation,
     SymbolNode,
@@ -48,28 +48,51 @@ enum LineKind {
 #[derive(Serialize, Deserialize, Clone)]
 #[pyclass]
 pub struct FileNode {
+    #[pyo3(get)]
     id: usize,
+
+    #[pyo3(get)]
     kind: LineKind,
+
+    #[pyo3(get)]
     name: String,
+
+    #[pyo3(get)]
     issues: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 #[pyclass]
 pub struct FileRelation {
+    #[pyo3(get)]
     id: usize,
+
+    #[pyo3(get)]
     kind: LineKind,
+
+    #[pyo3(get)]
     src: usize,
+
+    #[pyo3(get)]
     dst: usize,
+
+    #[pyo3(get)]
     symbols: Vec<usize>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 #[pyclass]
 pub struct SymbolNode {
+    #[pyo3(get)]
     id: usize,
+
+    #[pyo3(get)]
     kind: LineKind,
+
+    #[pyo3(get)]
     name: String,
+
+    #[pyo3(get)]
     range: RangeWrapper,
 }
 
