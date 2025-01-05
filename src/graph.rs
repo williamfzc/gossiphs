@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::time::Instant;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 pub struct FileContext {
     pub path: String,
@@ -149,7 +149,14 @@ impl Graph {
             .into_iter()
             .filter_map(|file_path| {
                 let tree_entry = tree.get_path(Path::new(&file_path)).ok()?;
-                let blob = tree_entry.to_object(&repo).unwrap().peel_to_blob().unwrap();
+                let object_result = tree_entry.to_object(&repo);
+                // failed (e.g. sub git module)
+                if object_result.is_err() {
+                    warn!("object not found: {:?}", file_path);
+                    return None;
+                }
+
+                let blob = object_result.unwrap().peel_to_blob().unwrap();
                 if blob.is_binary() {
                     return None;
                 }
