@@ -134,7 +134,7 @@ struct RelationCommand {
     symbol_csv: String,
 
     #[clap(long)]
-    #[clap(default_value = "")]
+    #[clap(default_value = "output.index")]
     index_file: String,
 }
 

@@ -148,20 +148,39 @@ impl Graph {
         let file_content_pairs: Vec<_> = files
             .into_iter()
             .filter_map(|file_path| {
-                let tree_entry = tree.get_path(Path::new(&file_path)).ok()?;
-                let object_result = tree_entry.to_object(&repo);
-                // failed (e.g. sub git module)
-                if object_result.is_err() {
-                    warn!("object not found: {:?}", file_path);
-                    return None;
-                }
+                let tree_entry = match tree.get_path(Path::new(&file_path)) {
+                    Ok(entry) => entry,
+                    Err(err) => {
+                        warn!("Failed to get tree entry for {:?}: {:?}", file_path, err);
+                        return None;
+                    }
+                };
 
-                let blob = object_result.unwrap().peel_to_blob().unwrap();
+                let object = match tree_entry.to_object(&repo) {
+                    Ok(obj) => obj,
+                    Err(err) => {
+                        warn!("Failed to get object for {:?}: {:?}", file_path, err);
+                        return None;
+                    }
+                };
+                let blob = match object.peel_to_blob() {
+                    Ok(blob) => blob,
+                    Err(err) => {
+                        warn!("Failed to peel object to blob for {:?}: {:?}", file_path, err);
+                        return None;
+                    }
+                };
                 if blob.is_binary() {
                     return None;
                 }
-                let content = std::str::from_utf8(blob.content()).unwrap();
-                Some((file_path, String::from(content)))
+
+                match std::str::from_utf8(blob.content()) {
+                    Ok(content) => Some((file_path, content.to_string())),
+                    Err(err) => {
+                        warn!("Invalid UTF-8 content in file {:?}: {:?}", file_path, err);
+                        None
+                    }
+                }
             })
             .collect();
 
