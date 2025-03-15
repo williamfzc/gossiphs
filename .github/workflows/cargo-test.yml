@@ -20,7 +20,7 @@ jobs:
           fetch-depth: '0'
           ref: ${{ github.event.pull_request.head.ref }}
       - name: Cache Cargo dependencies
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: ~/.cargo
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
