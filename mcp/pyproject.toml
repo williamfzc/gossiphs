@@ -15,6 +15,7 @@ gossiphs-mcp = "gossiphs_mcp.server:main"
 
 [dependency-groups]
 dev = [
+    "black>=25.1.0",
     "pytest>=8.3.5",
 ]
 

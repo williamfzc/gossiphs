@@ -35,10 +35,14 @@ def file_impact(project_path: str, target_file: str):
 
     ret = []
     for each_related_file in related_files:
-        related_symbols = set(each_symbol.symbol.name for each_symbol in each_related_file.related_symbols)
-        ret.append({
-            "file": each_related_file.name,
-            "symbols": list(related_symbols),
-        })
+        related_symbols = set(
+            each_symbol.symbol.name for each_symbol in each_related_file.related_symbols
+        )
+        ret.append(
+            {
+                "file": each_related_file.name,
+                "symbols": list(related_symbols),
+            }
+        )
 
     return ret

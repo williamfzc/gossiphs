@@ -1,7 +1,7 @@
 import os
 from mcp.server.fastmcp import FastMCP
 
-from tools import file_impact
+from gossiphs_mcp.tools import file_impact
 
 # Initialize FastMCP instance
 mcp = FastMCP("Gossiphs Code Analysis")
@@ -20,17 +20,9 @@ def analyze_file_impact(project_path: str, target_file: str) -> dict:
     """
     try:
         result = file_impact(project_path, target_file)
-        return {
-            "status": "success",
-            "data": result,
-            "message": ""
-        }
+        return {"status": "success", "data": result, "message": ""}
     except Exception as e:
-        return {
-            "status": "error",
-            "data": None,
-            "message": str(e)
-        }
+        return {"status": "error", "data": None, "message": str(e)}
 
 
 def main():
