@@ -1,9 +1,16 @@
 # Gossiphs = Gossip Graphs
 
+> [!TIP]
+> We provide an easy-to-use Python SDK and support for MCP (Model Context Protocol), allowing you to seamlessly
+> integrate it with your AI.
+>
+> See [Gossiphs MCP Server](./mcp/README.md)
+
 ![Crates.io Version](https://img.shields.io/crates/v/gossiphs)
 [![RealWorld Test](https://github.com/williamfzc/gossiphs/actions/workflows/cargo-test.yml/badge.svg)](https://github.com/williamfzc/gossiphs/actions/workflows/cargo-test.yml)
 
-"Zero setup" general code file relationship analysis. With Python & Rust. Based on tree-sitter and git analysis.
+"Zero setup" & "Blazingly fast" general code file relationship analysis. With Python & Rust. Based on tree-sitter and
+git analysis. Support MCP and ready for AI🤖
 
 ## What's it
 
@@ -100,7 +107,8 @@ More [examples](./py_wrapper/examples) can be found here.
 
 ### Others
 
-We also provide a CLI and additional usage options, making it easy to directly export CSV files or start an HTTP service.
+We also provide a CLI and additional usage options, making it easy to directly export CSV files or start an HTTP
+service.
 
 See [usage page](./docs/usage.md).
 
@@ -163,9 +171,10 @@ While there is undoubtedly a trade-off in precision, the benefits are clear:
 > the areas where it is primarily used.
 
 The method we use to demonstrate accuracy is to compare the results with those of LSP/LSIF. It must be admitted that
-static inference is almost impossible to obtain all reference relationships like LSP. 
+static inference is almost impossible to obtain all reference relationships like LSP.
 
-You can further combine your own needs and use other methods such as tfidf to process the results to meet more complex requirements.
+You can further combine your own needs and use other methods such as tfidf to process the results to meet more complex
+requirements.
 
 | Repo                             | Coverage of LSP Edges by Gossiphs |
 |----------------------------------|-----------------------------------|
