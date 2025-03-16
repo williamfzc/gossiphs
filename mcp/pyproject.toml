@@ -17,3 +17,7 @@ gossiphs-mcp = "gossiphs_mcp.server:main"
 dev = [
     "pytest>=8.3.5",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
