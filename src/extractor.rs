@@ -12,6 +12,7 @@ pub enum Extractor {
     Java,
     Kotlin,
     Swift,
+    CSharp,
 }
 
 const DEFAULT_NAMESPACE_REPR: &str = "<NS>";
@@ -48,7 +49,7 @@ impl Extractor {
                 self._extract(f, s, lang)
             }
             Extractor::Java => {
-                let lang = &tree_sitter_javascript::language();
+                let lang = &tree_sitter_java::language();
                 self._extract(f, s, lang)
             }
             Extractor::Kotlin => {
@@ -57,6 +58,10 @@ impl Extractor {
             }
             Extractor::Swift => {
                 let lang = &tree_sitter_swift::language();
+                self._extract(f, s, lang)
+            }
+            Extractor::CSharp => {
+                let lang = &tree_sitter_c_sharp::language();
                 self._extract(f, s, lang)
             }
         }
@@ -181,6 +186,7 @@ impl Extractor {
 "#,
             ),
         );
+        assert!(!symbols.is_empty(), "No symbols extracted from code");
         symbols.iter().for_each(|each| {
             info!("symbol: {:?}", each);
         })
@@ -242,6 +248,7 @@ export default NumbersManager;
             ""#,
             ),
         );
+        assert!(!symbols.is_empty(), "No symbols extracted from code");
         symbols.iter().for_each(|each| {
             info!("symbol: {:?}", each);
         })
@@ -283,6 +290,7 @@ type c = d
             "#,
             ),
         );
+        assert!(!symbols.is_empty(), "No symbols extracted from code");
         symbols.iter().for_each(|each| {
             info!("symbol: {:?}", each);
         })
@@ -296,6 +304,8 @@ type c = d
         let file_path = "";
         let file_content = &fs::read_to_string(file_path).unwrap_or_default();
         let symbols = Extractor::TypeScript.extract(&String::from(file_path), file_content);
+
+        assert!(!symbols.is_empty(), "No symbols extracted from code");
         symbols.iter().for_each(|each| {
             info!("symbol: {:?} {:?}", each.name, each.kind);
         })
@@ -332,8 +342,46 @@ class BaseStep(object):
             "#,
             ),
         );
+
+        assert!(!symbols.is_empty(), "No symbols extracted from code");
         symbols.iter().for_each(|each| {
             info!("symbol: {:?}", each);
+        })
+    }
+
+    #[test]
+    fn extract_csharp() {
+        let symbols = Extractor::CSharp.extract(
+            &String::from("test.cs"),
+            &String::from(
+                r#"
+using System;
+
+namespace HelloWorld
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            Console.WriteLine("Hello World!");
+            OtherClass.OtherMethod();
+        }
+    }
+
+    class OtherClass 
+    {
+        public static void OtherMethod() {}
+    }
+}
+"#,
+            ),
+        );
+
+        // Basic check: Ensure some symbols were extracted
+        assert!(!symbols.is_empty(), "No symbols extracted from C# code");
+
+        symbols.iter().for_each(|each| {
+            info!("csharp symbol: {:?}", each);
         })
     }
 
@@ -378,6 +426,7 @@ export { exportsObject };
             "#,
             ),
         );
+        assert!(!symbols.is_empty(), "No symbols extracted from code");
         symbols.iter().for_each(|each| {
             info!("symbol: {:?}", each);
         })
@@ -400,6 +449,7 @@ public class Example {
             "#,
             ),
         );
+        assert!(!symbols.is_empty(), "No symbols extracted from code");
         symbols.iter().for_each(|each| {
             info!("symbol: {:?}", each);
         })
@@ -443,6 +493,7 @@ private suspend fun <T> suspendRunCatching(block: suspend () -> T): Result<T> = 
             "#,
             ),
         );
+        assert!(!symbols.is_empty(), "No symbols extracted from code");
         symbols.iter().for_each(|each| {
             info!("symbol: {:?}", each);
         })
@@ -485,6 +536,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             "#,
             ),
         );
+        assert!(!symbols.is_empty(), "No symbols extracted from code");
         symbols.iter().for_each(|each| {
             info!("symbol: {:?}", each);
         })

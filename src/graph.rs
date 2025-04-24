@@ -72,6 +72,7 @@ impl Graph {
             ("java", &Extractor::Java),
             ("kt", &Extractor::Kotlin),
             ("swift", &Extractor::Swift),
+            ("cs", &Extractor::CSharp),
         ]
         .into_iter()
         .collect();

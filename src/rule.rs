@@ -159,5 +159,29 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
             namespace_grammar: "",
             namespace_filter_level: 0,
         },
+
+        Extractor::CSharp => Rule {
+            // Basic C# rules might need refinement
+            import_grammar: r#"
+(using_directive name: (_) @import)
+(identifier) @variable_name
+"#,
+            export_grammar: r#"
+(class_declaration name: (identifier) @exported_symbol)
+(interface_declaration name: (identifier) @exported_symbol)
+(struct_declaration name: (identifier) @exported_symbol)
+(enum_declaration name: (identifier) @exported_symbol)
+(method_declaration name: (identifier) @exported_symbol)
+(property_declaration name: (identifier) @exported_symbol)
+(field_declaration (variable_declaration (variable_declarator (identifier) @exported_symbol)))
+"#,
+            namespace_grammar: r#"
+(namespace_declaration) @body
+(class_declaration) @body
+(struct_declaration) @body
+(interface_declaration) @body
+"#,
+            namespace_filter_level: 1,
+        },
     }
 }
