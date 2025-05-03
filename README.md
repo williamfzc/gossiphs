@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/williamfzc-gossiphs-badge.png)](https://mseep.ai/app/williamfzc-gossiphs)
+
 # Gossiphs = Gossip Graphs
 
 > [!TIP]
