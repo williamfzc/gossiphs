@@ -49,6 +49,7 @@ If you're interested, you can check out the [contribution](#contribution) sectio
 | Java       | ✅      |
 | Kotlin     | ✅      |
 | Swift      | ✅      |
+| C#         | ✅      |
 
 You can see the [rule files](./src/rule.rs) here.
 
