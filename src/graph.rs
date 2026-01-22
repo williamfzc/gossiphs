@@ -730,4 +730,18 @@ mod tests {
         assert!(issues.len() > 0);
         assert!(commits.len() > 0);
     }
+
+    #[test]
+    fn test_graph_config_filters() {
+        let mut config = GraphConfig::default();
+        config.project_path = String::from(".");
+        // exclude all rs files should result in no files in graph
+        config.exclude_file_regex = String::from(".*\\.rs$");
+        let g = Graph::from(config);
+        
+        let files = g.files();
+        for file in files {
+            assert!(!file.ends_with(".rs"), "File {} should have been excluded", file);
+        }
+    }
 }

@@ -355,3 +355,74 @@ impl Graph {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::graph::Graph;
+    use crate::symbol::Symbol;
+    use tree_sitter::Range;
+
+    #[test]
+    fn test_related_files_logic() {
+        let mut g = Graph::empty();
+        let file_a = String::from("a.rs");
+        let file_b = String::from("b.rs");
+        let file_c = String::from("c.rs");
+
+        // mock ranges
+        let range1 = Range {
+            start_byte: 0,
+            end_byte: 1,
+            start_point: tree_sitter::Point { row: 0, column: 0 },
+            end_point: tree_sitter::Point { row: 0, column: 1 },
+        };
+        let range2 = Range {
+            start_byte: 10,
+            end_byte: 11,
+            start_point: tree_sitter::Point { row: 1, column: 0 },
+            end_point: tree_sitter::Point { row: 1, column: 1 },
+        };
+
+        // File A defines "foo" and "bar"
+        let def_foo = Symbol::new_def(file_a.clone(), String::from("foo"), range1);
+        let def_bar = Symbol::new_def(file_a.clone(), String::from("bar"), range2);
+
+        // File B references "foo" (weight 10)
+        let ref_foo_b = Symbol::new_ref(file_b.clone(), String::from("foo"), range1);
+        // File C references "foo" (weight 5) and "bar" (weight 5)
+        let ref_foo_c = Symbol::new_ref(file_c.clone(), String::from("foo"), range1);
+        let ref_bar_c = Symbol::new_ref(file_c.clone(), String::from("bar"), range2);
+
+        g.symbol_graph.add_file(&file_a);
+        g.symbol_graph.add_file(&file_b);
+        g.symbol_graph.add_file(&file_c);
+
+        for s in &[&def_foo, &def_bar, &ref_foo_b, &ref_foo_c, &ref_bar_c] {
+            g.symbol_graph.add_symbol((*s).clone());
+            g.symbol_graph.link_file_to_symbol(&(*s).file, *s);
+        }
+
+        // Link B -> A (foo)
+        g.symbol_graph.link_symbol_to_symbol(&ref_foo_b, &def_foo);
+        g.symbol_graph.enhance_symbol_to_symbol(&ref_foo_b.id(), &def_foo.id(), 10);
+
+        // Link C -> A (foo)
+        g.symbol_graph.link_symbol_to_symbol(&ref_foo_c, &def_foo);
+        g.symbol_graph.enhance_symbol_to_symbol(&ref_foo_c.id(), &def_foo.id(), 5);
+
+        // Link C -> A (bar)
+        g.symbol_graph.link_symbol_to_symbol(&ref_bar_c, &def_bar);
+        g.symbol_graph.enhance_symbol_to_symbol(&ref_bar_c.id(), &def_bar.id(), 5);
+
+        // When we look for files related to file_a
+        let related = g.related_files(file_a.clone());
+        assert_eq!(related.len(), 2);
+        
+        // B: 10 / 2 = 5
+        // C: (5/2) + (5/2) = 2 + 2 = 4
+        assert_eq!(related[0].name, file_b);
+        assert_eq!(related[0].score, 5);
+        assert_eq!(related[1].name, file_c);
+        assert_eq!(related[1].score, 4);
+    }
+}
