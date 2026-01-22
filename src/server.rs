@@ -1,3 +1,8 @@
+/*
+File: server.rs
+Functionality: HTTP server implementation for remote graph access.
+Role: Provides an Axum-based web server that exposes graph data and analysis through a RESTful API.
+*/
 use crate::graph::{Graph};
 use crate::symbol::{Symbol, SymbolKind};
 use axum::extract::Query;

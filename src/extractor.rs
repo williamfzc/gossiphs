@@ -1,3 +1,8 @@
+/*
+File: extractor.rs
+Functionality: Symbol extraction from source code using tree-sitter.
+Role: Implements language-specific symbol extraction logic for various programming languages, identifying definitions and references.
+*/
 use crate::rule::{get_rule, Rule};
 use crate::symbol::Symbol;
 use std::collections::HashMap;

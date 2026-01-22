@@ -1,3 +1,8 @@
+/*
+File: symbol.rs
+Functionality: Symbol data structures and low-level symbol graph.
+Role: Defines the core Symbol and Range types and implements the SymbolGraph using petgraph to track fine-grained code entity relationships.
+*/
 use petgraph::graph::{NodeIndex, UnGraph};
 use petgraph::prelude::EdgeRef;
 use serde::{Deserialize, Serialize};

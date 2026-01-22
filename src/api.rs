@@ -1,3 +1,8 @@
+/*
+File: api.rs
+Functionality: High-level API structures and implementation for graph queries.
+Role: Defines the core data structures for file relationships and metadata, and implements methods on the Graph struct for easy data retrieval.
+*/
 use crate::graph::{Graph, RelatedSymbol};
 use crate::symbol::{DefRefPair, RangeWrapper, Symbol, SymbolKind};
 use indicatif::ProgressBar;

@@ -1,3 +1,8 @@
+/*
+File: lib.rs
+Functionality: Entry point for the Rust library and Python module definition.
+Role: Acts as the root of the crate, exposing public modules and defining the PyO3-based Python interface.
+*/
 pub mod api;
 pub(crate) mod extractor;
 pub mod graph;

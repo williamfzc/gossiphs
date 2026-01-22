@@ -1,3 +1,8 @@
+/*
+File: graph.rs
+Functionality: Core graph construction and management logic.
+Role: Manages the high-level Graph structure, integrating commit history and symbol relationships to build a comprehensive map of code dependencies.
+*/
 use crate::extractor::Extractor;
 use crate::symbol::{Symbol, SymbolGraph, SymbolKind};
 use cupido::collector::config::Collect;

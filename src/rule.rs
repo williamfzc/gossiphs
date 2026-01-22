@@ -1,3 +1,8 @@
+/*
+File: rule.rs
+Functionality: Extraction rules and tree-sitter queries.
+Role: Defines the patterns for identifying imports, exports, and namespaces across different programming languages supported by the extractor.
+*/
 use crate::extractor::Extractor;
 
 /*

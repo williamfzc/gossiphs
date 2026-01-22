@@ -1,3 +1,8 @@
+/*
+File: main.rs
+Functionality: Command-line interface (CLI) application entry point.
+Role: Provides the binary executable with various subcommands for graph analysis, server management, and integration.
+*/
 use clap::Parser;
 use csv::Writer;
 use git2::build::CheckoutBuilder;
