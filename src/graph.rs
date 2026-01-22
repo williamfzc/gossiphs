@@ -143,12 +143,18 @@ impl Graph {
 
     fn extract_file_contexts(
         root: &String,
+        commit_id: Option<String>,
         files: Vec<String>,
         symbol_limit: usize,
     ) -> Vec<FileContext> {
         let repo = Repository::open(root).unwrap();
-        let head = repo.head().unwrap();
-        let commit = head.peel_to_commit().unwrap();
+        let commit = if let Some(ref cid) = commit_id {
+            let obj = repo.revparse_single(cid).unwrap();
+            obj.peel_to_commit().unwrap()
+        } else {
+            let head = repo.head().unwrap();
+            head.peel_to_commit().unwrap()
+        };
         let tree = commit.tree().unwrap();
 
         let file_content_pairs: Vec<_> = files
@@ -325,7 +331,7 @@ impl Graph {
 
         let file_len = files.len();
         let file_contexts =
-            Self::extract_file_contexts(&conf.project_path, files, conf.symbol_limit);
+            Self::extract_file_contexts(&conf.project_path, conf.commit_id.clone(), files, conf.symbol_limit);
         info!("symbol extract finished, files: {}", file_contexts.len());
 
         // filter pointless REF
@@ -598,6 +604,9 @@ pub struct GraphConfig {
 
     #[pyo3(get, set)]
     pub issue_regex: Option<String>,
+
+    #[pyo3(get, set)]
+    pub commit_id: Option<String>,
 }
 
 #[pymethods]
@@ -615,6 +624,7 @@ impl GraphConfig {
             exclude_author_regex: None,
             exclude_commit_regex: None,
             issue_regex: None,
+            commit_id: None,
         }
     }
 }
@@ -743,5 +753,17 @@ mod tests {
         for file in files {
             assert!(!file.ends_with(".rs"), "File {} should have been excluded", file);
         }
+    }
+
+    #[test]
+    fn test_graph_with_commit_id() {
+        let mut config = GraphConfig::default();
+        config.project_path = String::from(".");
+        // use an old commit
+        config.commit_id = Some(String::from("f034426"));
+        let g = Graph::from(config);
+        assert!(!g.file_contexts.is_empty());
+        // f034426 should have some files
+        info!("Files in commit f034426: {}", g.file_contexts.len());
     }
 }

@@ -5,8 +5,7 @@ Role: Provides the binary executable with various subcommands for graph analysis
 */
 use clap::Parser;
 use csv::Writer;
-use git2::build::CheckoutBuilder;
-use git2::{Commit, DiffOptions, Error, Object, ObjectType, Repository, Status};
+use git2::{Commit, DiffOptions, Error, Object, ObjectType, Repository};
 use gossiphs::api::RelatedFileContext;
 use gossiphs::graph::{Graph, GraphConfig};
 use gossiphs::server::{server_main, ServerConfig};
@@ -55,7 +54,7 @@ enum SubCommand {
     #[clap(name = "obsidian")]
     Obsidian(ObsidianCommand),
 
-    /// Diff analysis (will do some real checkout)
+    /// Diff analysis (without checkout)
     #[clap(name = "diff")]
     Diff(DiffCommand),
 }
@@ -528,37 +527,6 @@ struct DiffFileContext {
     modified: Vec<RelatedFileContext>,
 }
 
-fn is_working_directory_clean(repo: &Repository) -> bool {
-    match repo.statuses(None) {
-        Ok(statuses) => {
-            for entry in statuses.iter() {
-                let status = entry.status();
-                if status.contains(Status::WT_NEW)
-                    || status.contains(Status::WT_MODIFIED)
-                    || status.contains(Status::WT_DELETED)
-                    || status.contains(Status::WT_TYPECHANGE)
-                    || status.contains(Status::WT_RENAMED)
-                    || status.contains(Status::INDEX_NEW)
-                    || status.contains(Status::INDEX_MODIFIED)
-                    || status.contains(Status::INDEX_DELETED)
-                    || status.contains(Status::INDEX_TYPECHANGE)
-                    || status.contains(Status::INDEX_RENAMED)
-                {
-                    return false;
-                }
-            }
-            true
-        }
-        Err(_) => false,
-    }
-}
-
-fn get_current_branch(repo: &Repository) -> Option<String> {
-    let head = repo.head().ok()?;
-    let shorthand = head.shorthand()?;
-    Some(shorthand.to_string())
-}
-
 fn get_commit_and_object<'repo>(
     repo: &'repo Repository,
     rev: &str,
@@ -585,21 +553,12 @@ fn handle_diff(diff_cmd: DiffCommand) {
     // repo status check
     let project_path = diff_cmd.common_options.project_path;
     let repo = Repository::open(&project_path).unwrap();
-    if !is_working_directory_clean(&repo) {
-        println!("Working directory is dirty. Commit or stash changes first.");
-        return;
-    }
-    let current_branch = get_current_branch(&repo);
-    let (target_commit, target_object) = get_commit_and_object(&repo, &diff_cmd.target).unwrap();
-    let (source_commit, source_object) = get_commit_and_object(&repo, &diff_cmd.source).unwrap();
+    // we don't need to check dirty status anymore because we don't checkout
+    
+    let (target_commit, _target_object) = get_commit_and_object(&repo, &diff_cmd.target).unwrap();
+    let (source_commit, _source_object) = get_commit_and_object(&repo, &diff_cmd.source).unwrap();
 
     // gen graphs
-    let mut builder = CheckoutBuilder::new();
-    builder.force();
-    repo.checkout_tree(&target_object, Some(&mut builder))
-        .unwrap();
-    repo.set_head_detached(target_commit.id()).unwrap();
-
     let mut config = GraphConfig::default();
     config.project_path = project_path;
     if diff_cmd.common_options.strict {
@@ -609,23 +568,13 @@ fn handle_diff(diff_cmd: DiffCommand) {
         config.depth = diff_cmd.common_options.depth.unwrap();
     }
 
-    let target_graph = Graph::from(config.clone());
+    let mut target_config = config.clone();
+    target_config.commit_id = Some(target_commit.id().to_string());
+    let target_graph = Graph::from(target_config);
 
-    repo.checkout_tree(&source_object, Some(&mut builder))
-        .unwrap();
-    repo.set_head_detached(source_commit.id()).unwrap();
-    // reset to branch
-    if !current_branch.is_none() {
-        let current_branch_str = current_branch.unwrap();
-        if let Err(e) = repo.set_head(&format!("refs/heads/{}", current_branch_str)) {
-            eprintln!(
-                "Failed to switch back to branch '{}': {}",
-                current_branch_str, e
-            );
-        }
-    }
-
-    let source_graph = Graph::from(config);
+    let mut source_config = config.clone();
+    source_config.commit_id = Some(source_commit.id().to_string());
+    let source_graph = Graph::from(source_config);
 
     // diff files
     let mut diff_options = DiffOptions::new();
