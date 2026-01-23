@@ -28,49 +28,18 @@ impl Extractor {
         get_rule(self)
     }
     pub fn extract(&self, f: &String, s: &String) -> Vec<Symbol> {
-        let result = match self {
-            Extractor::Rust => {
-                let lang = &tree_sitter_rust::language();
-                self._extract(f, s, lang)
-            }
-            Extractor::TypeScript => {
-                let lang = &tree_sitter_typescript::language_typescript();
-                self._extract(f, s, lang)
-            }
-            Extractor::Go => {
-                self._extract(f, s, &tree_sitter_go::language())
-                    .map(|symbols| {
-                        symbols
-                            .into_iter()
-                            .filter(|each| each.name != "_")
-                            .collect()
-                    })
-            }
-            Extractor::Python => {
-                let lang = &tree_sitter_python::language();
-                self._extract(f, s, lang)
-            }
-            Extractor::JavaScript => {
-                let lang = &tree_sitter_javascript::language();
-                self._extract(f, s, lang)
-            }
-            Extractor::Java => {
-                let lang = &tree_sitter_java::language();
-                self._extract(f, s, lang)
-            }
-            Extractor::Kotlin => {
-                let lang = &tree_sitter_kotlin::language();
-                self._extract(f, s, lang)
-            }
-            Extractor::Swift => {
-                let lang = &tree_sitter_swift::language();
-                self._extract(f, s, lang)
-            }
-            Extractor::CSharp => {
-                let lang = &tree_sitter_c_sharp::language();
-                self._extract(f, s, lang)
-            }
+        let lang = match self {
+            Extractor::Rust => tree_sitter_rust::language(),
+            Extractor::TypeScript => tree_sitter_typescript::language_typescript(),
+            Extractor::Go => tree_sitter_go::language(),
+            Extractor::Python => tree_sitter_python::language(),
+            Extractor::JavaScript => tree_sitter_javascript::language(),
+            Extractor::Java => tree_sitter_java::language(),
+            Extractor::Kotlin => tree_sitter_kotlin::language(),
+            Extractor::Swift => tree_sitter_swift::language(),
+            Extractor::CSharp => tree_sitter_c_sharp::language(),
         };
+        let result = self._extract(f, s, &lang);
         result.unwrap_or_else(|e| {
             tracing::error!("failed to extract symbols from {}: {}", f, e);
             Vec::new()
@@ -88,20 +57,43 @@ impl Extractor {
         let mut ret = Vec::new();
         let mut taken = HashMap::new();
 
+        let filter_re = if let Some(re_str) = rule.exclude_regex {
+            Some(regex::Regex::new(re_str).context("Invalid exclude_regex in rule")?)
+        } else {
+            None
+        };
+
+        let is_blacklisted = |name: &str| -> bool {
+            if rule.blacklist.contains(&name) {
+                return true;
+            }
+            if let Some(re) = &filter_re {
+                if re.is_match(name) {
+                    return true;
+                }
+            }
+            false
+        };
+
         // defs
         {
             let query = Query::new(language, rule.export_grammar).context("Error creating export query")?;
             let mut cursor = QueryCursor::new();
             let matches = cursor.matches(&query, tree.root_node(), s.as_bytes());
             for mat in matches {
-                let matched_node = mat.captures[0].node;
-                let range = matched_node.range();
+                for capture in mat.captures {
+                    let matched_node = capture.node;
+                    let range = matched_node.range();
 
-                if let Ok(str_slice) = matched_node.utf8_text(s.as_bytes()) {
-                    let string = str_slice.to_string();
-                    let def_node = Symbol::new_def(f.clone(), string, range);
-                    taken.insert(def_node.id(), ());
-                    ret.push(def_node);
+                    if let Ok(str_slice) = matched_node.utf8_text(s.as_bytes()) {
+                        let string = str_slice.to_string();
+                        if is_blacklisted(&string) {
+                            continue;
+                        }
+                        let def_node = Symbol::new_def(f.clone(), string, range);
+                        taken.insert(def_node.id(), ());
+                        ret.push(def_node);
+                    }
                 }
             }
         }
@@ -112,16 +104,21 @@ impl Extractor {
             let mut cursor = QueryCursor::new();
             let matches = cursor.matches(&query, tree.root_node(), s.as_bytes());
             for mat in matches {
-                let matched_node = mat.captures[0].node;
-                let range = matched_node.range();
+                for capture in mat.captures {
+                    let matched_node = capture.node;
+                    let range = matched_node.range();
 
-                if let Ok(str_slice) = matched_node.utf8_text(s.as_bytes()) {
-                    let string = str_slice.to_string();
-                    let ref_node = Symbol::new_ref(f.clone(), string, range);
-                    if taken.contains_key(&ref_node.id()) {
-                        continue;
+                    if let Ok(str_slice) = matched_node.utf8_text(s.as_bytes()) {
+                        let string = str_slice.to_string();
+                        if is_blacklisted(&string) {
+                            continue;
+                        }
+                        let ref_node = Symbol::new_ref(f.clone(), string, range);
+                        if taken.contains_key(&ref_node.id()) {
+                            continue;
+                        }
+                        ret.push(ref_node);
                     }
-                    ret.push(ref_node);
                 }
             }
         }
@@ -133,19 +130,21 @@ impl Extractor {
                 let mut cursor = QueryCursor::new();
                 let matches = cursor.matches(&query, tree.root_node(), s.as_bytes());
                 for mat in matches {
-                    let matched_node = mat.captures[0].node;
-                    let range = matched_node.range();
+                    for capture in mat.captures {
+                        let matched_node = capture.node;
+                        let range = matched_node.range();
 
-                    let ref_node = Symbol::new_namespace(
-                        f.clone(),
-                        // empty string will break some func
-                        String::from(DEFAULT_NAMESPACE_REPR),
-                        range,
-                    );
-                    if taken.contains_key(&ref_node.id()) {
-                        continue;
+                        let ref_node = Symbol::new_namespace(
+                            f.clone(),
+                            // empty string will break some func
+                            String::from(DEFAULT_NAMESPACE_REPR),
+                            range,
+                        );
+                        if taken.contains_key(&ref_node.id()) {
+                            continue;
+                        }
+                        ret.push(ref_node);
                     }
-                    ret.push(ref_node);
                 }
             }
         }

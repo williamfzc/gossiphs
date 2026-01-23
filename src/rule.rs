@@ -18,6 +18,23 @@ pub struct Rule {
     // namespace control
     pub(crate) namespace_grammar: &'static str,
     pub(crate) namespace_filter_level: usize,
+
+    // filter control
+    pub(crate) exclude_regex: Option<&'static str>,
+    pub(crate) blacklist: Vec<&'static str>,
+}
+
+impl Default for Rule {
+    fn default() -> Self {
+        Rule {
+            import_grammar: "",
+            export_grammar: "",
+            namespace_grammar: "",
+            namespace_filter_level: 0,
+            exclude_regex: None,
+            blacklist: Vec::new(),
+        }
+    }
 }
 
 pub fn get_rule(extractor_type: &Extractor) -> Rule {
@@ -50,6 +67,7 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (generic_function) @body
 "#,
             namespace_filter_level: 1,
+            ..Default::default()
         },
 
         Extractor::TypeScript => Rule {
@@ -75,6 +93,7 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (method_definition) @body
 "#,
             namespace_filter_level: 1,
+            ..Default::default()
         },
 
         Extractor::Go => Rule {
@@ -96,6 +115,8 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (method_declaration) @body
 "#,
             namespace_filter_level: 1,
+            exclude_regex: Some(r#"^_$"#),
+            ..Default::default()
         },
 
         Extractor::Python => Rule {
@@ -111,6 +132,8 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (class_definition) @body
 "#,
             namespace_filter_level: 2,
+            blacklist: vec!["self"],
+            ..Default::default()
         },
 
         Extractor::JavaScript => Rule {
@@ -126,6 +149,7 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (class_declaration) @body
 "#,
             namespace_filter_level: 2,
+            ..Default::default()
         },
         Extractor::Java => Rule {
             import_grammar: r#"
@@ -139,6 +163,7 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (class_declaration) @body
 "#,
             namespace_filter_level: 1,
+            ..Default::default()
         },
 
         Extractor::Kotlin => Rule {
@@ -151,6 +176,7 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
   "#,
             namespace_grammar: "",
             namespace_filter_level: 0,
+            ..Default::default()
         },
 
         Extractor::Swift => Rule {
@@ -163,6 +189,7 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
   "#,
             namespace_grammar: "",
             namespace_filter_level: 0,
+            ..Default::default()
         },
 
         Extractor::CSharp => Rule {
@@ -187,6 +214,7 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (interface_declaration) @body
 "#,
             namespace_filter_level: 1,
+            ..Default::default()
         },
     }
 }
