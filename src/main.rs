@@ -376,7 +376,7 @@ fn handle_relation(relation_cmd: RelationCommand) {
                             let pairs = g
                                 .pairs_between_files(file.clone(), related_file.clone())
                                 .iter()
-                                .map(|each| each.src_symbol.name.clone())
+                                .map(|each| each.src_symbol.name.as_ref().clone())
                                 .collect::<Vec<String>>();
                             pair_row.push(pairs.join("|"));
                         }

@@ -23,11 +23,9 @@ pub enum SymbolKind {
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[pyclass]
 pub struct Symbol {
-    #[pyo3(get)]
-    pub file: String,
+    pub file: Arc<String>,
 
-    #[pyo3(get)]
-    pub name: String,
+    pub name: Arc<String>,
 
     #[pyo3(get)]
     pub range: RangeWrapper,
@@ -39,6 +37,16 @@ pub struct Symbol {
 impl Symbol {
     fn is_def(&self) -> bool {
         self.kind == SymbolKind::DEF
+    }
+
+    #[getter]
+    fn file(&self) -> String {
+        self.file.as_ref().clone()
+    }
+
+    #[getter]
+    fn name(&self) -> String {
+        self.name.as_ref().clone()
     }
 }
 
@@ -82,7 +90,7 @@ impl RangeWrapper {
 }
 
 impl Symbol {
-    pub fn new_def(file: String, name: String, range: Range) -> Symbol {
+    pub fn new_def(file: Arc<String>, name: Arc<String>, range: Range) -> Symbol {
         Symbol {
             file,
             name,
@@ -91,7 +99,7 @@ impl Symbol {
         }
     }
 
-    pub fn new_ref(file: String, name: String, range: Range) -> Symbol {
+    pub fn new_ref(file: Arc<String>, name: Arc<String>, range: Range) -> Symbol {
         Symbol {
             file,
             name,
@@ -100,7 +108,7 @@ impl Symbol {
         }
     }
 
-    pub fn new_namespace(file: String, name: String, range: Range) -> Symbol {
+    pub fn new_namespace(file: Arc<String>, name: Arc<String>, range: Range) -> Symbol {
         Symbol {
             file,
             name,
@@ -161,8 +169,7 @@ impl SymbolGraph {
         }
     }
 
-    pub(crate) fn add_file(&mut self, name: &String) {
-        let id = Arc::new(name.clone());
+    pub(crate) fn add_file(&mut self, id: Arc<String>) {
         if self.file_mapping.contains_key(&id) {
             return;
         }
@@ -187,7 +194,7 @@ impl SymbolGraph {
         self.symbol_mapping.entry(id).or_insert(index);
     }
 
-    pub(crate) fn link_file_to_symbol(&mut self, name: &String, symbol: &Symbol) {
+    pub(crate) fn link_file_to_symbol(&mut self, name: &Arc<String>, symbol: &Symbol) {
         if let (Some(file_index), Some(symbol_index)) = (
             self.file_mapping.get(name),
             self.symbol_mapping.get(&symbol.id()),
@@ -215,9 +222,10 @@ impl SymbolGraph {
         if let (Some(a_index), Some(b_index)) =
             (self.symbol_mapping.get(a), self.symbol_mapping.get(b))
         {
-            let edge = self.g.find_edge(*a_index, *b_index).unwrap();
-            if let Some(weight) = self.g.edge_weight_mut(edge) {
-                *weight += ratio;
+            if let Some(edge) = self.g.find_edge(*a_index, *b_index) {
+                if let Some(weight) = self.g.edge_weight_mut(edge) {
+                    *weight += ratio;
+                }
             }
         }
     }
@@ -241,7 +249,7 @@ impl SymbolGraph {
             .collect()
     }
 
-    pub fn list_symbols(&self, file_name: &String) -> Vec<Symbol> {
+    pub fn list_symbols(&self, file_name: &Arc<String>) -> Vec<Symbol> {
         if !self.file_mapping.contains_key(file_name) {
             return Vec::new();
         }
@@ -253,14 +261,14 @@ impl SymbolGraph {
             .collect()
     }
 
-    pub fn list_definitions(&self, file_name: &String) -> Vec<Symbol> {
+    pub fn list_definitions(&self, file_name: &Arc<String>) -> Vec<Symbol> {
         self.list_symbols(file_name)
             .into_iter()
             .filter(|symbol| symbol.kind == SymbolKind::DEF)
             .collect()
     }
 
-    pub fn list_references(&self, file_name: &String) -> Vec<Symbol> {
+    pub fn list_references(&self, file_name: &Arc<String>) -> Vec<Symbol> {
         self.list_symbols(file_name)
             .into_iter()
             .filter(|symbol| symbol.kind == SymbolKind::REF)
@@ -286,7 +294,7 @@ impl SymbolGraph {
         self.neighbor_symbols(*ref_index)
     }
 
-    pub fn pairs_between_files(&self, src_file: &String, dst_file: &String) -> Vec<DefRefPair> {
+    pub fn pairs_between_files(&self, src_file: &Arc<String>, dst_file: &Arc<String>) -> Vec<DefRefPair> {
         let defs = self.list_definitions(src_file);
         let refs = self.list_references(dst_file);
 
@@ -308,10 +316,79 @@ impl SymbolGraph {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
 #[pyclass]
 pub struct DefRefPair {
     #[pyo3(get)]
     pub src_symbol: Symbol,
     #[pyo3(get)]
     pub dst_symbol: Symbol,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tree_sitter::Point as TSPoint;
+
+    #[test]
+    fn test_symbol_id_and_arc_sharing() {
+        let file = Arc::new("src/lib.rs".to_string());
+        let name = Arc::new("my_func".to_string());
+        let range = Range {
+            start_byte: 10,
+            end_byte: 20,
+            start_point: TSPoint { row: 1, column: 5 },
+            end_point: TSPoint { row: 1, column: 15 },
+        };
+
+        let sym1 = Symbol::new_def(file.clone(), name.clone(), range);
+        let sym2 = Symbol::new_def(file.clone(), name.clone(), range);
+
+        assert_eq!(sym1.id(), sym2.id());
+        assert_eq!(sym1, sym2);
+
+        // Verify Arc sharing (same pointer address)
+        assert!(Arc::ptr_eq(&sym1.file, &sym2.file));
+        assert!(Arc::ptr_eq(&sym1.name, &sym2.name));
+    }
+
+    #[test]
+    fn test_symbol_kind_diff_ids() {
+        let file = Arc::new("src/lib.rs".to_string());
+        let name = Arc::new("my_func".to_string());
+        let range = Range {
+            start_byte: 10,
+            end_byte: 20,
+            start_point: TSPoint { row: 1, column: 5 },
+            end_point: TSPoint { row: 1, column: 15 },
+        };
+
+        let sym_def = Symbol::new_def(file.clone(), name.clone(), range);
+        let sym_ref = Symbol::new_ref(file.clone(), name.clone(), range);
+
+        assert_ne!(sym_def.id(), sym_ref.id());
+    }
+
+    #[test]
+    fn test_symbol_graph_basic() {
+        let mut graph = SymbolGraph::new();
+        let file = Arc::new("test.rs".to_string());
+        let sym_name = Arc::new("foo".to_string());
+        let range = Range {
+            start_byte: 0,
+            end_byte: 0,
+            start_point: TSPoint { row: 0, column: 0 },
+            end_point: TSPoint { row: 0, column: 0 },
+        };
+
+        let sym = Symbol::new_def(file.clone(), sym_name.clone(), range);
+
+        graph.add_file(file.clone());
+        graph.add_symbol(sym.clone());
+        graph.link_file_to_symbol(&file, &sym);
+
+        let symbols = graph.list_symbols(&file);
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].name.as_ref(), "foo");
+    }
 }

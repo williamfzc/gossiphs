@@ -30,7 +30,7 @@ fn main() {
                     if each_score == 0 {
                         continue;
                     }
-                    if each_related_symbol.file == *file {
+                    if each_related_symbol.file.as_ref() == file {
                         continue;
                     }
 

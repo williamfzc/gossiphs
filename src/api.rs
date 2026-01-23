@@ -12,6 +12,7 @@ use rayon::iter::ParallelIterator;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 #[derive(Serialize, Deserialize, Clone)]
 #[pyclass]
@@ -120,23 +121,24 @@ impl Graph {
     pub fn files(&self) -> HashSet<String> {
         self.file_contexts
             .iter()
-            .map(|each| each.path.clone())
+            .map(|each| each.path.as_ref().clone())
             .collect()
     }
 
     /// All files which pointed to this file
     pub fn related_files(&self, file_name: String) -> Vec<RelatedFileContext> {
-        if !self.symbol_graph.file_mapping.contains_key(&file_name) {
+        let file_name_arc = Arc::new(file_name);
+        if !self.symbol_graph.file_mapping.contains_key(&file_name_arc) {
             return Vec::new();
         }
 
         // find all the defs in this file
         // and tracking all the references and theirs
         let mut file_counter = HashMap::new();
-        let mut file_ref_mapping: HashMap<String, Vec<RelatedSymbol>> = HashMap::new();
+        let mut file_ref_mapping: HashMap<Arc<String>, Vec<RelatedSymbol>> = HashMap::new();
 
         // other files -> this file
-        let definitions_in_file = self.symbol_graph.list_definitions(&file_name);
+        let definitions_in_file = self.symbol_graph.list_definitions(&file_name_arc);
         let definition_count = definitions_in_file.len();
 
         definitions_in_file.iter().for_each(|def| {
@@ -192,14 +194,14 @@ impl Graph {
         // TODO: need it?
 
         // remove itself
-        file_counter.remove(&file_name);
+        file_counter.remove(&file_name_arc);
 
         let mut contexts = file_counter
             .iter()
             .map(|(k, v)| {
                 let related_symbols = file_ref_mapping[k].clone();
                 return RelatedFileContext {
-                    name: k.clone(),
+                    name: k.as_ref().clone(),
                     score: *v,
                     defs: self.symbol_graph.list_definitions(k).len(),
                     refs: self.symbol_graph.list_references(k).len(),
@@ -228,9 +230,10 @@ impl Graph {
     }
 
     pub fn file_metadata(&self, file_name: String) -> FileMetadata {
+        let file_name_arc = Arc::new(file_name.clone());
         let symbols = self
             .symbol_graph
-            .list_symbols(&file_name)
+            .list_symbols(&file_name_arc)
             .iter()
             .cloned()
             .collect();
@@ -254,10 +257,12 @@ impl Graph {
     }
 
     pub fn pairs_between_files(&self, src_file: String, dst_file: String) -> Vec<DefRefPair> {
-        if !self.files().contains(&src_file) || !self.files().contains(&dst_file) {
+        let src_file_arc = Arc::new(src_file);
+        let dst_file_arc = Arc::new(dst_file);
+        if !self.symbol_graph.file_mapping.contains_key(&src_file_arc) || !self.symbol_graph.file_mapping.contains_key(&dst_file_arc) {
             return Vec::new();
         }
-        self.symbol_graph.pairs_between_files(&src_file, &dst_file)
+        self.symbol_graph.pairs_between_files(&src_file_arc, &dst_file_arc)
     }
 
     pub fn list_file_issues(&self, file_name: String) -> Vec<String> {
@@ -323,7 +328,7 @@ impl Graph {
                                     SymbolNode {
                                         id: cur_id,
                                         kind: LineKind::SymbolNode,
-                                        name: s.symbol.name.clone(),
+                                        name: s.symbol.name.as_ref().clone(),
                                         range: s.symbol.range.clone(),
                                     },
                                 );
@@ -361,6 +366,7 @@ mod tests {
     use crate::graph::Graph;
     use crate::symbol::Symbol;
     use tree_sitter::Range;
+    use std::sync::Arc;
 
     #[test]
     fn test_related_files_logic() {
@@ -384,18 +390,18 @@ mod tests {
         };
 
         // File A defines "foo" and "bar"
-        let def_foo = Symbol::new_def(file_a.clone(), String::from("foo"), range1);
-        let def_bar = Symbol::new_def(file_a.clone(), String::from("bar"), range2);
+        let def_foo = Symbol::new_def(Arc::new(file_a.clone()), Arc::new(String::from("foo")), range1);
+        let def_bar = Symbol::new_def(Arc::new(file_a.clone()), Arc::new(String::from("bar")), range2);
 
         // File B references "foo" (weight 10)
-        let ref_foo_b = Symbol::new_ref(file_b.clone(), String::from("foo"), range1);
+        let ref_foo_b = Symbol::new_ref(Arc::new(file_b.clone()), Arc::new(String::from("foo")), range1);
         // File C references "foo" (weight 5) and "bar" (weight 5)
-        let ref_foo_c = Symbol::new_ref(file_c.clone(), String::from("foo"), range1);
-        let ref_bar_c = Symbol::new_ref(file_c.clone(), String::from("bar"), range2);
+        let ref_foo_c = Symbol::new_ref(Arc::new(file_c.clone()), Arc::new(String::from("foo")), range1);
+        let ref_bar_c = Symbol::new_ref(Arc::new(file_c.clone()), Arc::new(String::from("bar")), range2);
 
-        g.symbol_graph.add_file(&file_a);
-        g.symbol_graph.add_file(&file_b);
-        g.symbol_graph.add_file(&file_c);
+        g.symbol_graph.add_file(Arc::new(file_a.clone()));
+        g.symbol_graph.add_file(Arc::new(file_b.clone()));
+        g.symbol_graph.add_file(Arc::new(file_c.clone()));
 
         for s in &[&def_foo, &def_bar, &ref_foo_b, &ref_foo_c, &ref_bar_c] {
             g.symbol_graph.add_symbol((*s).clone());

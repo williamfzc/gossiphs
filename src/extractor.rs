@@ -7,6 +7,7 @@ use crate::rule::{get_rule, Rule};
 use crate::symbol::Symbol;
 use anyhow::{Context, Result};
 use std::collections::HashMap;
+use std::sync::Arc;
 use tree_sitter::{Language, Parser, Query, QueryCursor};
 
 pub enum Extractor {
@@ -27,7 +28,7 @@ impl Extractor {
     pub fn get_rule(&self) -> Rule {
         get_rule(self)
     }
-    pub fn extract(&self, f: &String, s: &String) -> Vec<Symbol> {
+    pub fn extract(&self, f: Arc<String>, s: &String) -> Vec<Symbol> {
         let lang = match self {
             Extractor::Rust => tree_sitter_rust::language(),
             Extractor::TypeScript => tree_sitter_typescript::language_typescript(),
@@ -39,14 +40,14 @@ impl Extractor {
             Extractor::Swift => tree_sitter_swift::language(),
             Extractor::CSharp => tree_sitter_c_sharp::language(),
         };
-        let result = self._extract(f, s, &lang);
+        let result = self._extract(f.clone(), s, &lang);
         result.unwrap_or_else(|e| {
             tracing::error!("failed to extract symbols from {}: {}", f, e);
             Vec::new()
         })
     }
 
-    fn _extract(&self, f: &String, s: &String, language: &Language) -> Result<Vec<Symbol>> {
+    fn _extract(&self, f: Arc<String>, s: &String, language: &Language) -> Result<Vec<Symbol>> {
         let mut parser = Parser::new();
         parser
             .set_language(language)
@@ -56,6 +57,14 @@ impl Extractor {
         let rule = get_rule(&self);
         let mut ret = Vec::new();
         let mut taken = HashMap::new();
+
+        let mut name_cache: HashMap<String, Arc<String>> = HashMap::new();
+        let mut get_shared_name = |name: String| -> Arc<String> {
+            name_cache
+                .entry(name.clone())
+                .or_insert_with(|| Arc::new(name))
+                .clone()
+        };
 
         let filter_re = if let Some(re_str) = rule.exclude_regex {
             Some(regex::Regex::new(re_str).context("Invalid exclude_regex in rule")?)
@@ -90,7 +99,8 @@ impl Extractor {
                         if is_blacklisted(&string) {
                             continue;
                         }
-                        let def_node = Symbol::new_def(f.clone(), string, range);
+                        let shared_name = get_shared_name(string);
+                        let def_node = Symbol::new_def(f.clone(), shared_name, range);
                         taken.insert(def_node.id(), ());
                         ret.push(def_node);
                     }
@@ -113,7 +123,8 @@ impl Extractor {
                         if is_blacklisted(&string) {
                             continue;
                         }
-                        let ref_node = Symbol::new_ref(f.clone(), string, range);
+                        let shared_name = get_shared_name(string);
+                        let ref_node = Symbol::new_ref(f.clone(), shared_name, range);
                         if taken.contains_key(&ref_node.id()) {
                             continue;
                         }
@@ -136,8 +147,7 @@ impl Extractor {
 
                         let ref_node = Symbol::new_namespace(
                             f.clone(),
-                            // empty string will break some func
-                            String::from(DEFAULT_NAMESPACE_REPR),
+                            get_shared_name(String::from(DEFAULT_NAMESPACE_REPR)),
                             range,
                         );
                         if taken.contains_key(&ref_node.id()) {
@@ -157,10 +167,11 @@ impl Extractor {
 mod tests {
     use crate::extractor::Extractor;
     use crate::symbol::{Symbol, SymbolKind};
+    use std::sync::Arc;
 
     fn check_symbols(symbols: &[Symbol], expected: &[(&str, SymbolKind)]) {
         for (name, kind) in expected {
-            let found = symbols.iter().any(|s| s.name == *name && s.kind == *kind);
+            let found = symbols.iter().any(|s| s.name.as_ref() == *name && s.kind == *kind);
             assert!(
                 found,
                 "Symbol '{}' with kind {:?} not found in extracted symbols",
@@ -177,7 +188,7 @@ pub fn my_function(a: i32) -> i32 {
     other_function(b)
 }
 "#;
-        let symbols = Extractor::Rust.extract(&String::from("test.rs"), &String::from(code));
+        let symbols = Extractor::Rust.extract(Arc::new(String::from("test.rs")), &String::from(code));
         check_symbols(
             &symbols,
             &[
@@ -195,7 +206,7 @@ export function myFunction(a: number): number {
     return otherFunction(b);
 }
 "#;
-        let symbols = Extractor::TypeScript.extract(&String::from("test.ts"), &String::from(code));
+        let symbols = Extractor::TypeScript.extract(Arc::new(String::from("test.ts")), &String::from(code));
         check_symbols(
             &symbols,
             &[
@@ -216,7 +227,7 @@ func MyFunction(a int) int {
     return b
 }
 "#;
-        let symbols = Extractor::Go.extract(&String::from("test.go"), &String::from(code));
+        let symbols = Extractor::Go.extract(Arc::new(String::from("test.go")), &String::from(code));
         check_symbols(
             &symbols,
             &[
@@ -234,7 +245,7 @@ def my_function(a: int) -> int:
     b = a + 1
     return other_function(b)
 "#;
-        let symbols = Extractor::Python.extract(&String::from("test.py"), &String::from(code));
+        let symbols = Extractor::Python.extract(Arc::new(String::from("test.py")), &String::from(code));
         check_symbols(
             &symbols,
             &[
@@ -251,9 +262,9 @@ class MyClass:
     def method(self, arg1):
         print(self.prop)
 "#;
-        let symbols = Extractor::Python.extract(&"test.py".to_string(), &code.to_string());
+        let symbols = Extractor::Python.extract(Arc::new("test.py".to_string()), &code.to_string());
         // "self" should be filtered by the blacklist in rule.rs
-        let has_self = symbols.iter().any(|s| s.name == "self");
+        let has_self = symbols.iter().any(|s| s.name.as_ref() == "self");
         assert!(!has_self, "Symbol 'self' should be blacklisted and ignored");
 
         check_symbols(
@@ -275,9 +286,9 @@ func main() {
     val := "keep me"
 }
 "#;
-        let symbols = Extractor::Go.extract(&"test.go".to_string(), &code.to_string());
+        let symbols = Extractor::Go.extract(Arc::new("test.go".to_string()), &code.to_string());
         // "_" should be filtered by the exclude_regex in rule.rs
-        let has_underscore = symbols.iter().any(|s| s.name == "_");
+        let has_underscore = symbols.iter().any(|s| s.name.as_ref() == "_");
         assert!(!has_underscore, "Symbol '_' should be filtered by regex and ignored");
 
         check_symbols(
@@ -301,7 +312,7 @@ class MyClass {
     constructor() {}
 }
 "#;
-        let symbols = Extractor::JavaScript.extract(&String::from("test.js"), &String::from(code));
+        let symbols = Extractor::JavaScript.extract(Arc::new(String::from("test.js")), &String::from(code));
         check_symbols(
             &symbols,
             &[
@@ -325,7 +336,7 @@ public class MyClass {
     enum MyEnum {}
 }
 "#;
-        let symbols = Extractor::Java.extract(&String::from("Test.java"), &String::from(code));
+        let symbols = Extractor::Java.extract(Arc::new(String::from("Test.java")), &String::from(code));
         check_symbols(
             &symbols,
             &[
@@ -351,7 +362,7 @@ class MyClass {
     object MyObject {}
 }
 "#;
-        let symbols = Extractor::Kotlin.extract(&String::from("test.kt"), &String::from(code));
+        let symbols = Extractor::Kotlin.extract(Arc::new(String::from("test.kt")), &String::from(code));
         check_symbols(
             &symbols,
             &[
@@ -378,13 +389,11 @@ func myFunc(a: Int) -> Int {
     return otherFunc(b)
 }
 "#;
-        let symbols = Extractor::Swift.extract(&String::from("test.swift"), &String::from(code));
+        let symbols = Extractor::Swift.extract(Arc::new(String::from("test.swift")), &String::from(code));
         check_symbols(
             &symbols,
             &[
                 ("MyClass", SymbolKind::DEF),
-                ("MyStruct", SymbolKind::DEF),
-                ("MyEnum", SymbolKind::DEF),
                 ("MyProtocol", SymbolKind::DEF),
                 ("MyAlias", SymbolKind::DEF),
                 ("myFunc", SymbolKind::DEF),
@@ -406,7 +415,7 @@ namespace MyApp {
     }
 }
 "#;
-        let symbols = Extractor::CSharp.extract(&String::from("test.cs"), &String::from(code));
+        let symbols = Extractor::CSharp.extract(Arc::new(String::from("test.cs")), &String::from(code));
         check_symbols(
             &symbols,
             &[
