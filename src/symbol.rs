@@ -110,7 +110,7 @@ impl Symbol {
     }
 
     pub fn id(&self) -> String {
-        format!("{}{}", self.file, self.range.start_byte)
+        format!("{}:{}:{:?}:{}", self.file, self.name, self.kind, self.range.start_byte)
     }
 }
 

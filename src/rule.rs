@@ -153,14 +153,19 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
         },
         Extractor::Java => Rule {
             import_grammar: r#"
-((identifier) @variable_name)
+(identifier) @variable_name
+(type_identifier) @variable_name
   "#,
-            // todo: not enough maybe
             export_grammar: r#"
 (class_declaration name: (identifier) @exported_symbol)
+(method_declaration name: (identifier) @exported_symbol)
+(interface_declaration name: (identifier) @exported_symbol)
+(enum_declaration name: (identifier) @exported_symbol)
+(field_declaration (variable_declarator name: (identifier) @exported_symbol))
   "#,
             namespace_grammar: r#"
 (class_declaration) @body
+(method_declaration) @body
 "#,
             namespace_filter_level: 1,
             ..Default::default()
@@ -168,27 +173,37 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 
         Extractor::Kotlin => Rule {
             import_grammar: r#"
-(identifier (simple_identifier) @variable_name)
+(simple_identifier) @variable_name
   "#,
             export_grammar: r#"
 (class_declaration (type_identifier) @exported_symbol)
 (function_declaration (simple_identifier) @exported_symbol)
+(property_declaration (variable_declaration (simple_identifier) @exported_symbol))
+(object_declaration (type_identifier) @exported_symbol)
   "#,
-            namespace_grammar: "",
-            namespace_filter_level: 0,
+            namespace_grammar: r#"
+(class_declaration) @body
+(function_declaration) @body
+"#,
+            namespace_filter_level: 1,
             ..Default::default()
         },
 
         Extractor::Swift => Rule {
             import_grammar: r#"
-((simple_identifier) @exported_symbol)
+(simple_identifier) @variable_name
   "#,
-            // TODO: not enough
             export_grammar: r#"
-(function_declaration (simple_identifier) @method)
+(function_declaration name: (simple_identifier) @exported_symbol)
+(class_declaration name: (type_identifier) @exported_symbol)
+(protocol_declaration name: (type_identifier) @exported_symbol)
+(typealias_declaration name: (type_identifier) @exported_symbol)
   "#,
-            namespace_grammar: "",
-            namespace_filter_level: 0,
+            namespace_grammar: r#"
+(function_declaration) @body
+(class_declaration) @body
+"#,
+            namespace_filter_level: 1,
             ..Default::default()
         },
 

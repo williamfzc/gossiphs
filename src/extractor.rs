@@ -156,399 +156,92 @@ impl Extractor {
 #[cfg(test)]
 mod tests {
     use crate::extractor::Extractor;
-    use std::fs;
-    use tracing::info;
+    use crate::symbol::{Symbol, SymbolKind};
+
+    fn check_symbols(symbols: &[Symbol], expected: &[(&str, SymbolKind)]) {
+        for (name, kind) in expected {
+            let found = symbols.iter().any(|s| s.name == *name && s.kind == *kind);
+            assert!(
+                found,
+                "Symbol '{}' with kind {:?} not found in extracted symbols",
+                name, kind
+            );
+        }
+    }
 
     #[test]
     fn extract_rust() {
-        let symbols = Extractor::Rust.extract(
-            &String::from("abc"),
-            &String::from(
-                r#"
-pub enum Extractor {
-    RUST,
+        let code = r#"
+pub fn my_function(a: i32) -> i32 {
+    let b = a + 1;
+    other_function(b)
 }
-
-impl Extractor {
-    pub fn extract(&self, s: &String) {
-        match self {
-            Extractor::RUST => {
-                let mut parser = Parser::new();
-                let lang = &tree_sitter_rust::language();
-                parser
-                    .set_language(lang)
-                    .expect("Error loading Rust grammar");
-                let tree = parser.parse(s, None).unwrap();
-                let query_str = "(function_item name: (identifier) @function)";
-                let query = Query::new(lang, query_str).unwrap();
-
-                let mut cursor = QueryCursor::new();
-                let matches = cursor.matches(&query, tree.root_node(), s.as_bytes());
-
-                for mat in matches {
-                    info!("{:?}", mat);
-                }
-            }
-        }
-    }
-}
-"#,
-            ),
+"#;
+        let symbols = Extractor::Rust.extract(&String::from("test.rs"), &String::from(code));
+        check_symbols(
+            &symbols,
+            &[
+                ("my_function", SymbolKind::DEF),
+                ("other_function", SymbolKind::REF),
+            ],
         );
-        assert!(!symbols.is_empty(), "No symbols extracted from code");
-        symbols.iter().for_each(|each| {
-            info!("symbol: {:?}", each);
-        })
     }
 
     #[test]
     fn extract_typescript() {
-        let symbols = Extractor::TypeScript.extract(
-            &String::from("abc"),
-            &String::from(
-                r#"
-const THISISCONST = "";
-export const ANOTHERCONST = "111";
-                
-import { store } from 'docx-deps';
-
-import { toggleShowCommentNumbers } from '$common/redux/actions';
-
-export type DocVerseDeps = DocVerseDepsImpl;
-export { loadBlockitUIComponent } from 'docx-deps';
-export const aaaaa = "cbde";
-
-export interface ClickEvent {
-  index: number;
-  commentIds: string[];
+        let code = r#"
+export function myFunction(a: number): number {
+    const b = a + 1;
+    return otherFunction(b);
 }
-
-export const loadUrlWebSDKResource = async () => {
-}
-
-function abc() {};
-
-class NumbersManager {
-  private hideNumberTimer: number | null = null;
-
-  destroy() {
-    this.clearHideNumberTimer();
-  }
-
-  temporaryHideNumbers() {
-    this.clearHideNumberTimer();
-    store.dispatch(toggleShowCommentNumbers(false));
-  }
-
-  showNumbers() {
-    this.clearHideNumberTimer();
-
-    this.hideNumberTimer = window.setTimeout(() => {
-      store.dispatch(toggleShowCommentNumbers(true));
-    }, 600);
-  }
-
-  private clearHideNumberTimer() {
-    this.hideNumberTimer && window.clearTimeout(this.hideNumberTimer);
-  }
-}
-
-export default NumbersManager;
-            ""#,
-            ),
+"#;
+        let symbols = Extractor::TypeScript.extract(&String::from("test.ts"), &String::from(code));
+        check_symbols(
+            &symbols,
+            &[
+                ("myFunction", SymbolKind::DEF),
+                ("otherFunction", SymbolKind::REF),
+            ],
         );
-        assert!(!symbols.is_empty(), "No symbols extracted from code");
-        symbols.iter().for_each(|each| {
-            info!("symbol: {:?}", each);
-        })
     }
 
     #[test]
     fn extract_golang() {
-        let symbols = Extractor::Go.extract(
-            &String::from("abc"),
-            &String::from(
-                r#"
-package abc
-
-type Parser struct {
-	*Headless
-	engine *sitter.Parser
+        let code = r#"
+package main
+import "fmt"
+func MyFunction(a int) int {
+    b := a + 1
+    fmt.Println(b)
+    return b
 }
-
-func NormalFunc(lang *sitter.Language) string {
-	return "hello"
-}
-
-func (*Parser) NormalMethod(lang *sitter.Language) string {
-	return "hi"
-}
-
-func Abcd[T DataType](result *BaseFileResult[T]) []T {
-	return nil
-}
-
-func injectV1Group(v1group *gin.RouterGroup) {
-	// scope
-	scopeGroup := v1group.Group("/")
-}
-
-const a = "1"
-var b = "2"
-type c = d
-            "#,
-            ),
+"#;
+        let symbols = Extractor::Go.extract(&String::from("test.go"), &String::from(code));
+        check_symbols(
+            &symbols,
+            &[
+                ("MyFunction", SymbolKind::DEF),
+                ("fmt", SymbolKind::REF),
+                ("Println", SymbolKind::REF),
+            ],
         );
-        assert!(!symbols.is_empty(), "No symbols extracted from code");
-        symbols.iter().for_each(|each| {
-            info!("symbol: {:?}", each);
-        })
-    }
-
-    #[test]
-    #[ignore]
-    fn extract_typescript_file() {
-        // for testing extract rules
-        tracing_subscriber::fmt::init();
-        let file_path = "";
-        let file_content = &fs::read_to_string(file_path).unwrap_or_default();
-        let symbols = Extractor::TypeScript.extract(&String::from(file_path), file_content);
-
-        assert!(!symbols.is_empty(), "No symbols extracted from code");
-        symbols.iter().for_each(|each| {
-            info!("symbol: {:?} {:?}", each.name, each.kind);
-        })
     }
 
     #[test]
     fn extract_python() {
-        let symbols = Extractor::Python.extract(
-            &String::from("abc"),
-            &String::from(
-                r#"
-def normal_fff(self, env_config: EnvConfig):
-    pass
-
-class BaseStep(object):
-    def apply(self, env_config: EnvConfig, result: ResultContext):
-        raise NotImplementedError
-
-    def name(self) -> str:
-        raise NotImplementedError
-
-    def config_name(self) -> str:
-        return self.name().replace("-", "_")
-
-    def get_mod_config(self, env_config: EnvConfig):
-        return getattr(
-            env_config._repo_config.modules,
-            self.config_name(),
-        )
-
-    def enabled(self, env_config: EnvConfig) -> bool:
-        mod_config = self.get_mod_config(env_config)
-        return mod_config.enabled
-            "#,
-            ),
+        let code = r#"
+def my_function(a: int) -> int:
+    b = a + 1
+    return other_function(b)
+"#;
+        let symbols = Extractor::Python.extract(&String::from("test.py"), &String::from(code));
+        check_symbols(
+            &symbols,
+            &[
+                ("my_function", SymbolKind::DEF),
+                ("other_function", SymbolKind::REF),
+            ],
         );
-
-        assert!(!symbols.is_empty(), "No symbols extracted from code");
-        symbols.iter().for_each(|each| {
-            info!("symbol: {:?}", each);
-        })
-    }
-
-    #[test]
-    fn extract_csharp() {
-        let symbols = Extractor::CSharp.extract(
-            &String::from("test.cs"),
-            &String::from(
-                r#"
-using System;
-
-namespace HelloWorld
-{
-    class Program
-    {
-        static void Main(string[] args)
-        {
-            Console.WriteLine("Hello World!");
-            OtherClass.OtherMethod();
-        }
-    }
-
-    class OtherClass 
-    {
-        public static void OtherMethod() {}
-    }
-}
-"#,
-            ),
-        );
-
-        // Basic check: Ensure some symbols were extracted
-        assert!(!symbols.is_empty(), "No symbols extracted from C# code");
-
-        symbols.iter().for_each(|each| {
-            info!("csharp symbol: {:?}", each);
-        })
-    }
-
-    #[test]
-    fn extract_javascript() {
-        let symbols = Extractor::JavaScript.extract(
-            &String::from("abc"),
-            &String::from(
-                r#"
-import React from 'react';
-import { Component } from 'react';
-import { SomeDefaultExport } from './some-module';
-import * as SomeNamespace from './some-namespace';
-import { namedFunction, namedClass } from './some-library';
-
-export default function exampleFunction() {
-    console.log('This is an example function.');
-}
-
-export function namedFunction() {
-    console.log('This is a named function.');
-}
-
-export class namedClass {
-    constructor() {
-        console.log('This is a named class.');
-    }
-}
-
-const exportsObject = {
-    anotherFunction: function() {
-        console.log('This is another function.');
-    },
-    anotherClass: class {
-        constructor() {
-            console.log('This is another class.');
-        }
-    }
-};
-
-export { exportsObject };
-            "#,
-            ),
-        );
-        assert!(!symbols.is_empty(), "No symbols extracted from code");
-        symbols.iter().for_each(|each| {
-            info!("symbol: {:?}", each);
-        })
-    }
-
-    #[test]
-    fn extract_java() {
-        let symbols = Extractor::Java.extract(
-            &String::from("abc"),
-            &String::from(
-                r#"
-package example;
-import com.google.common.util.concurrent.Futures;
-
-public class Example {
-	public static void hello() {
-		System.out.println(Futures.immediateCancelledFuture());
-	}
-}
-            "#,
-            ),
-        );
-        assert!(!symbols.is_empty(), "No symbols extracted from code");
-        symbols.iter().for_each(|each| {
-            info!("symbol: {:?}", each);
-        })
-    }
-
-    #[test]
-    fn extract_kt() {
-        let symbols = Extractor::Kotlin.extract(
-            &String::from("abc"),
-            &String::from(
-                r#"
-package com.google.samples.apps.nowinandroid.core.data
-
-import android.util.Log
-import com.google.samples.apps.nowinandroid.core.datastore.ChangeListVersions
-import com.google.samples.apps.nowinandroid.core.network.model.NetworkChangeList
-import kotlin.coroutines.cancellation.CancellationException
-
-interface Synchronizer {
-    suspend fun getChangeListVersions(): ChangeListVersions
-    suspend fun updateChangeListVersions(update: ChangeListVersions.() -> ChangeListVersions)
-    suspend fun Syncable.sync() = this@sync.syncWith(this@Synchronizer)
-}
-
-interface Syncable {
-    suspend fun syncWith(synchronizer: Synchronizer): Boolean
-}
-
-private suspend fun <T> suspendRunCatching(block: suspend () -> T): Result<T> = try {
-    Result.success(block())
-} catch (cancellationException: CancellationException) {
-    throw cancellationException
-} catch (exception: Exception) {
-    Log.i(
-        "suspendRunCatching",
-        "Failed to evaluate a suspendRunCatchingBlock. Returning failure Result",
-        exception,
-    )
-    Result.failure(exception)
-}
-            "#,
-            ),
-        );
-        assert!(!symbols.is_empty(), "No symbols extracted from code");
-        symbols.iter().for_each(|each| {
-            info!("symbol: {:?}", each);
-        })
-    }
-
-    #[test]
-    fn extract_swift() {
-        let symbols = Extractor::Swift.extract(
-            &String::from("abc"),
-            &String::from(
-                r#"
-import UIKit
-import SwiftyJSON
-
-@UIApplicationMain
-class AppDelegate: UIResponder, UIApplicationDelegate {
-
-    var window: UIWindow?
-
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-
-        let navigationController = self.window?.rootViewController as! UINavigationController
-        let viewController = navigationController.topViewController as! ViewController
-
-        if let file = Bundle.main.path(forResource: "SwiftyJSONTests", ofType: "json") {
-            do {
-                let data = try Data(contentsOf: URL(fileURLWithPath: file))
-                let json = try JSON(data: data)
-                viewController.json = json
-            } catch {
-                viewController.json = JSON.null
-            }
-        } else {
-            viewController.json = JSON.null
-        }
-
-        return true
-    }
-}
-            "#,
-            ),
-        );
-        assert!(!symbols.is_empty(), "No symbols extracted from code");
-        symbols.iter().for_each(|each| {
-            info!("symbol: {:?}", each);
-        })
     }
 
     #[test]
@@ -562,10 +255,15 @@ class MyClass:
         // "self" should be filtered by the blacklist in rule.rs
         let has_self = symbols.iter().any(|s| s.name == "self");
         assert!(!has_self, "Symbol 'self' should be blacklisted and ignored");
-        
-        // Ensure other symbols are still there
-        assert!(symbols.iter().any(|s| s.name == "MyClass"), "MyClass should be extracted");
-        assert!(symbols.iter().any(|s| s.name == "method"), "method should be extracted");
+
+        check_symbols(
+            &symbols,
+            &[
+                ("MyClass", SymbolKind::DEF),
+                ("method", SymbolKind::DEF),
+                ("print", SymbolKind::REF),
+            ],
+        );
     }
 
     #[test]
@@ -581,9 +279,141 @@ func main() {
         // "_" should be filtered by the exclude_regex in rule.rs
         let has_underscore = symbols.iter().any(|s| s.name == "_");
         assert!(!has_underscore, "Symbol '_' should be filtered by regex and ignored");
-        
-        // Ensure other symbols are still there
-        assert!(symbols.iter().any(|s| s.name == "main"), "main should be extracted");
-        assert!(symbols.iter().any(|s| s.name == "val"), "val should be extracted");
+
+        check_symbols(
+            &symbols,
+            &[
+                ("main", SymbolKind::DEF),
+                ("val", SymbolKind::REF),
+            ],
+        );
+    }
+
+    #[test]
+    fn extract_javascript() {
+        let code = r#"
+function myFunction(a) {
+    const b = a + 1;
+    return otherFunction(b);
+}
+
+class MyClass {
+    constructor() {}
+}
+"#;
+        let symbols = Extractor::JavaScript.extract(&String::from("test.js"), &String::from(code));
+        check_symbols(
+            &symbols,
+            &[
+                ("myFunction", SymbolKind::DEF),
+                ("MyClass", SymbolKind::DEF),
+                ("otherFunction", SymbolKind::REF),
+            ],
+        );
+    }
+
+    #[test]
+    fn extract_java() {
+        let code = r#"
+public class MyClass {
+    private String myField;
+    public void myMethod(int a) {
+        int b = a + 1;
+        otherMethod(b);
+    }
+    interface MyInterface {}
+    enum MyEnum {}
+}
+"#;
+        let symbols = Extractor::Java.extract(&String::from("Test.java"), &String::from(code));
+        check_symbols(
+            &symbols,
+            &[
+                ("MyClass", SymbolKind::DEF),
+                ("myField", SymbolKind::DEF),
+                ("myMethod", SymbolKind::DEF),
+                ("MyInterface", SymbolKind::DEF),
+                ("MyEnum", SymbolKind::DEF),
+                ("otherMethod", SymbolKind::REF),
+            ],
+        );
+    }
+
+    #[test]
+    fn extract_kotlin() {
+        let code = r#"
+class MyClass {
+    val myProp = 1
+    fun myMethod(a: Int): Int {
+        val b = a + 1
+        return otherMethod(b)
+    }
+    object MyObject {}
+}
+"#;
+        let symbols = Extractor::Kotlin.extract(&String::from("test.kt"), &String::from(code));
+        check_symbols(
+            &symbols,
+            &[
+                ("MyClass", SymbolKind::DEF),
+                ("myProp", SymbolKind::DEF),
+                ("myMethod", SymbolKind::DEF),
+                ("MyObject", SymbolKind::DEF),
+                ("otherMethod", SymbolKind::REF),
+            ],
+        );
+    }
+
+    #[test]
+    fn extract_swift() {
+        let code = r#"
+class MyClass {}
+struct MyStruct {}
+enum MyEnum {}
+protocol MyProtocol {}
+typealias MyAlias = String
+
+func myFunc(a: Int) -> Int {
+    let b = a + 1
+    return otherFunc(b)
+}
+"#;
+        let symbols = Extractor::Swift.extract(&String::from("test.swift"), &String::from(code));
+        check_symbols(
+            &symbols,
+            &[
+                ("MyClass", SymbolKind::DEF),
+                ("MyStruct", SymbolKind::DEF),
+                ("MyEnum", SymbolKind::DEF),
+                ("MyProtocol", SymbolKind::DEF),
+                ("MyAlias", SymbolKind::DEF),
+                ("myFunc", SymbolKind::DEF),
+                ("otherFunc", SymbolKind::REF),
+            ],
+        );
+    }
+
+    #[test]
+    fn extract_csharp() {
+        let code = r#"
+using System;
+namespace MyApp {
+    public class MyClass {
+        public void MyMethod(int a) {
+            int b = a + 1;
+            OtherMethod(b);
+        }
+    }
+}
+"#;
+        let symbols = Extractor::CSharp.extract(&String::from("test.cs"), &String::from(code));
+        check_symbols(
+            &symbols,
+            &[
+                ("MyClass", SymbolKind::DEF),
+                ("MyMethod", SymbolKind::DEF),
+                ("OtherMethod", SymbolKind::REF),
+            ],
+        );
     }
 }
