@@ -8,6 +8,6 @@ use pyo3::prelude::*;
 
 #[pyfunction]
 pub fn create_graph(config: GraphConfig) -> PyResult<Graph> {
-    let g = Graph::from(config);
+    let g = Graph::from(config).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))?;
     Ok(g)
 }

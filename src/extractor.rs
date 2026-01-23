@@ -5,6 +5,7 @@ Role: Implements language-specific symbol extraction logic for various programmi
 */
 use crate::rule::{get_rule, Rule};
 use crate::symbol::Symbol;
+use anyhow::{Context, Result};
 use std::collections::HashMap;
 use tree_sitter::{Language, Parser, Query, QueryCursor};
 
@@ -27,7 +28,7 @@ impl Extractor {
         get_rule(self)
     }
     pub fn extract(&self, f: &String, s: &String) -> Vec<Symbol> {
-        match self {
+        let result = match self {
             Extractor::Rust => {
                 let lang = &tree_sitter_rust::language();
                 self._extract(f, s, lang)
@@ -37,13 +38,13 @@ impl Extractor {
                 self._extract(f, s, lang)
             }
             Extractor::Go => {
-                let lang = &tree_sitter_go::language();
-                self._extract(f, s, lang)
-                    .into_iter()
-                    .filter(|each| {
-                        return each.name != "_";
+                self._extract(f, s, &tree_sitter_go::language())
+                    .map(|symbols| {
+                        symbols
+                            .into_iter()
+                            .filter(|each| each.name != "_")
+                            .collect()
                     })
-                    .collect()
             }
             Extractor::Python => {
                 let lang = &tree_sitter_python::language();
@@ -69,15 +70,19 @@ impl Extractor {
                 let lang = &tree_sitter_c_sharp::language();
                 self._extract(f, s, lang)
             }
-        }
+        };
+        result.unwrap_or_else(|e| {
+            tracing::error!("failed to extract symbols from {}: {}", f, e);
+            Vec::new()
+        })
     }
 
-    fn _extract(&self, f: &String, s: &String, language: &Language) -> Vec<Symbol> {
+    fn _extract(&self, f: &String, s: &String, language: &Language) -> Result<Vec<Symbol>> {
         let mut parser = Parser::new();
         parser
             .set_language(language)
-            .expect("Error loading grammar");
-        let tree = parser.parse(s, None).unwrap();
+            .context("Error loading grammar")?;
+        let tree = parser.parse(s, None).context("Error parsing code")?;
 
         let rule = get_rule(&self);
         let mut ret = Vec::new();
@@ -85,7 +90,7 @@ impl Extractor {
 
         // defs
         {
-            let query = Query::new(language, rule.export_grammar).unwrap();
+            let query = Query::new(language, rule.export_grammar).context("Error creating export query")?;
             let mut cursor = QueryCursor::new();
             let matches = cursor.matches(&query, tree.root_node(), s.as_bytes());
             for mat in matches {
@@ -103,7 +108,7 @@ impl Extractor {
 
         // refs
         {
-            let query = Query::new(language, rule.import_grammar).unwrap();
+            let query = Query::new(language, rule.import_grammar).context("Error creating import query")?;
             let mut cursor = QueryCursor::new();
             let matches = cursor.matches(&query, tree.root_node(), s.as_bytes());
             for mat in matches {
@@ -124,7 +129,7 @@ impl Extractor {
         // namespace
         {
             if !rule.namespace_grammar.is_empty() {
-                let query = Query::new(language, rule.namespace_grammar).unwrap();
+                let query = Query::new(language, rule.namespace_grammar).context("Error creating namespace query")?;
                 let mut cursor = QueryCursor::new();
                 let matches = cursor.matches(&query, tree.root_node(), s.as_bytes());
                 for mat in matches {
@@ -145,7 +150,7 @@ impl Extractor {
             }
         }
 
-        ret
+        Ok(ret)
     }
 }
 

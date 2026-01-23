@@ -480,6 +480,7 @@ dependencies = [
 name = "gossiphs"
 version = "0.11.6"
 dependencies = [
+ "anyhow",
  "axum",
  "cc",
  "clap",

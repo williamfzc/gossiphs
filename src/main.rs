@@ -239,7 +239,7 @@ fn handle_relate(relate_cmd: RelateCommand) {
         config.depth = relate_cmd.common_options.depth.unwrap();
     }
 
-    let g = Graph::from(config);
+    let g = Graph::from(config).expect("Failed to create graph");
 
     let mut related_files_data = Vec::new();
     let files = relate_cmd.get_files();
@@ -279,7 +279,7 @@ fn handle_relation_v2(relation_cmd: RelationCommand) {
     }
     config.exclude_author_regex = relation_cmd.common_options.exclude_author_regex.clone();
 
-    let g = Graph::from(config);
+    let g = Graph::from(config).expect("Failed to create graph");
     let relation_list = g.list_all_relations();
 
     let mut writer =
@@ -320,7 +320,7 @@ fn handle_relation(relation_cmd: RelationCommand) {
         config.symbol_len_limit = symbol_len_limit;
     }
 
-    let g = Graph::from(config);
+    let g = Graph::from(config).expect("Failed to create graph");
 
     let mut files: Vec<String> = g.files().into_iter().collect();
     files.sort();
@@ -426,7 +426,7 @@ fn handle_interactive(interactive_cmd: InteractiveCommand) {
         config.depth = interactive_cmd.common_options.depth.unwrap();
     }
 
-    let g = Graph::from(config);
+    let g = Graph::from(config).expect("Failed to create graph");
 
     if interactive_cmd.dry {
         return;
@@ -466,7 +466,7 @@ fn handle_server(server_cmd: ServerCommand) {
         config.depth = server_cmd.common_options.depth.unwrap();
     }
 
-    let g = Graph::from(config);
+    let g = Graph::from(config).expect("Failed to create graph");
 
     let mut server_config = ServerConfig::new(g);
     server_config.port = server_cmd.port.clone();
@@ -485,7 +485,7 @@ fn handle_obsidian(obsidian_cmd: ObsidianCommand) {
         config.depth = obsidian_cmd.common_options.depth.unwrap();
     }
 
-    let g = Graph::from(config);
+    let g = Graph::from(config).expect("Failed to create graph");
 
     // create mirror files
     // add links to files
@@ -570,11 +570,11 @@ fn handle_diff(diff_cmd: DiffCommand) {
 
     let mut target_config = config.clone();
     target_config.commit_id = Some(target_commit.id().to_string());
-    let target_graph = Graph::from(target_config);
+    let target_graph = Graph::from(target_config).expect("Failed to create target graph");
 
     let mut source_config = config.clone();
     source_config.commit_id = Some(source_commit.id().to_string());
-    let source_graph = Graph::from(source_config);
+    let source_graph = Graph::from(source_config).expect("Failed to create source graph");
 
     // diff files
     let mut diff_options = DiffOptions::new();

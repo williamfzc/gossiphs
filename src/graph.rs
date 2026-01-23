@@ -5,6 +5,7 @@ Role: Manages the high-level Graph structure, integrating commit history and sym
 */
 use crate::extractor::Extractor;
 use crate::symbol::{Symbol, SymbolGraph, SymbolKind};
+use anyhow::{Context, Result};
 use cupido::collector::config::Collect;
 use cupido::collector::config::{get_collector, Config};
 use cupido::relation::graph::RelationGraph as CupidoRelationGraph;
@@ -146,16 +147,20 @@ impl Graph {
         commit_id: Option<String>,
         files: Vec<String>,
         symbol_limit: usize,
-    ) -> Vec<FileContext> {
-        let repo = Repository::open(root).unwrap();
+    ) -> Result<Vec<FileContext>> {
+        let repo = Repository::open(root).context(format!("Failed to open repository at {}", root))?;
         let commit = if let Some(ref cid) = commit_id {
-            let obj = repo.revparse_single(cid).unwrap();
-            obj.peel_to_commit().unwrap()
+            let obj = repo
+                .revparse_single(cid)
+                .context(format!("Failed to find commit {}", cid))?;
+            obj.peel_to_commit()
+                .context(format!("Object {} is not a commit", cid))?
         } else {
-            let head = repo.head().unwrap();
-            head.peel_to_commit().unwrap()
+            let head = repo.head().context("Failed to get HEAD")?;
+            head.peel_to_commit()
+                .context("HEAD does not point to a commit")?
         };
-        let tree = commit.tree().unwrap();
+        let tree = commit.tree().context("Failed to get tree from commit")?;
 
         let file_content_pairs: Vec<_> = files
             .into_iter()
@@ -208,7 +213,7 @@ impl Graph {
             .filter(|ctx| ctx.symbols.len() < symbol_limit)
             .collect();
         pb.finish_and_clear();
-        file_contexts
+        Ok(file_contexts)
     }
 
     fn build_global_symbol_table(
@@ -308,7 +313,7 @@ impl Graph {
         }
     }
 
-    pub fn from(conf: GraphConfig) -> Graph {
+    pub fn from(conf: GraphConfig) -> Result<Graph> {
         let start_time = Instant::now();
         // 1. call cupido
         // 2. extract symbols
@@ -319,19 +324,19 @@ impl Graph {
             conf.exclude_author_regex,
             conf.exclude_commit_regex,
             conf.issue_regex,
-        );
+        ).context("Failed to create relation graph")?;
         let size = relation_graph.size();
         info!("relation graph ready, size: {:?}", size);
 
         let mut files = relation_graph.files();
         if !conf.exclude_file_regex.is_empty() {
-            let re = Regex::new(&conf.exclude_file_regex).expect("Invalid regex");
+            let re = Regex::new(&conf.exclude_file_regex).context("Invalid exclude_file_regex")?;
             files.retain(|file| !re.is_match(file));
         }
 
         let file_len = files.len();
         let file_contexts =
-            Self::extract_file_contexts(&conf.project_path, conf.commit_id.clone(), files, conf.symbol_limit);
+            Self::extract_file_contexts(&conf.project_path, conf.commit_id.clone(), files, conf.symbol_limit)?;
         info!("symbol extract finished, files: {}", file_contexts.len());
 
         // filter pointless REF
@@ -371,7 +376,7 @@ impl Graph {
             } else {
                 let file_commits: HashSet<String> = relation_graph
                     .file_related_commits(&f)
-                    .unwrap()
+                    .unwrap_or_default()
                     .into_iter()
                     .filter(|each| {
                         // reduce the impact of large commits
@@ -381,7 +386,7 @@ impl Graph {
                         } else {
                             let ref_files: HashSet<String> = relation_graph
                                 .commit_related_files(each)
-                                .unwrap()
+                                .unwrap_or_default()
                                 .into_iter()
                                 .collect();
 
@@ -419,7 +424,10 @@ impl Graph {
                 }
 
                 // all the possible definitions of this reference
-                let defs = global_def_symbol_table.get(&symbol.name).unwrap();
+                let defs = match global_def_symbol_table.get(&symbol.name) {
+                    Some(defs) => defs,
+                    None => continue,
+                };
 
                 let mut ratio_map: BTreeMap<usize, Vec<&Symbol>> = BTreeMap::new();
                 for def in defs {
@@ -442,7 +450,7 @@ impl Graph {
                         } else {
                             let commit_ref_files: HashSet<String> = relation_graph
                                 .commit_related_files(each_commit)
-                                .unwrap()
+                                .unwrap_or_default()
                                 .into_iter()
                                 .collect();
                             commit_file_cache2
@@ -526,11 +534,11 @@ impl Graph {
         );
         info!("total time cost: {:?}", start_time.elapsed());
 
-        Graph {
-            file_contexts,
+        Ok(Graph {
+            file_contexts: final_file_contexts,
             _relation_graph: relation_graph,
             symbol_graph,
-        }
+        })
     }
 }
 
@@ -550,19 +558,19 @@ fn create_cupido_graph(
     exclude_author_regex: Option<String>,
     exclude_commit_regex: Option<String>,
     issue_regex: Option<String>,
-) -> CupidoRelationGraph {
+) -> Result<CupidoRelationGraph> {
     let mut conf = Config::default();
-    conf.repo_path = project_path.parse().unwrap();
+    conf.repo_path = project_path.parse().context(format!("Invalid project path: {}", project_path))?;
     conf.depth = depth;
     conf.author_exclude_regex = exclude_author_regex;
     conf.commit_exclude_regex = exclude_commit_regex;
-    if issue_regex.is_some() {
-        conf.issue_regex = issue_regex.unwrap();
+    if let Some(re) = issue_regex {
+        conf.issue_regex = re;
     }
 
     let collector = get_collector();
     let graph = collector.walk(conf);
-    graph
+    Ok(graph)
 }
 
 #[pyclass]
@@ -642,7 +650,7 @@ mod tests {
         tracing_subscriber::fmt::init();
         let mut config = GraphConfig::default();
         config.project_path = String::from("../stack-graphs");
-        let g = Graph::from(config);
+        let g = Graph::from(config).unwrap();
         g.file_contexts.iter().for_each(|context| {
             debug!("{}: {:?}", context.path, context.symbols);
         });
@@ -682,7 +690,7 @@ mod tests {
         tracing_subscriber::fmt::init();
         let mut config = GraphConfig::default();
         config.project_path = String::from("../lsif-node");
-        let g = Graph::from(config);
+        let g = Graph::from(config).unwrap();
         g.file_contexts.iter().for_each(|context| {
             debug!("{}: {:?}", context.path, context.symbols);
         });
@@ -704,7 +712,7 @@ mod tests {
         tracing_subscriber::fmt::init();
         let mut config = GraphConfig::default();
         config.project_path = String::from("../stack-graphs");
-        let g = Graph::from(config);
+        let g = Graph::from(config).unwrap();
         let files = g.related_files(String::from(
             "tree-sitter-stack-graphs/src/cli/util/reporter.rs",
         ));
@@ -718,7 +726,7 @@ mod tests {
         tracing_subscriber::fmt::init();
         let mut config = GraphConfig::default();
         config.project_path = String::from(".");
-        let g = Graph::from(config);
+        let g = Graph::from(config).unwrap();
         let symbols: Vec<DefRefPair> = g.pairs_between_files(
             String::from("src/extractor.rs"),
             String::from("src/graph.rs"),
@@ -747,7 +755,7 @@ mod tests {
         config.project_path = String::from(".");
         // exclude all rs files should result in no files in graph
         config.exclude_file_regex = String::from(".*\\.rs$");
-        let g = Graph::from(config);
+        let g = Graph::from(config).unwrap();
         
         let files = g.files();
         for file in files {
@@ -761,7 +769,7 @@ mod tests {
         config.project_path = String::from(".");
         // use an old commit
         config.commit_id = Some(String::from("f034426"));
-        let g = Graph::from(config);
+        let g = Graph::from(config).unwrap();
         assert!(!g.file_contexts.is_empty());
         // f034426 should have some files
         info!("Files in commit f034426: {}", g.file_contexts.len());

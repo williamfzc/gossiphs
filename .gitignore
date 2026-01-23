@@ -12,3 +12,12 @@ target/
 .idea/
 
 venv/
+
+# Test outputs
+*.csv
+*.index
+
+# Python/Maturin artifacts
+__pycache__/
+*.so
+.pytest_cache/

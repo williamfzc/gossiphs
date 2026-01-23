@@ -3,7 +3,7 @@ use gossiphs::symbol::SymbolKind;
 
 fn main() {
     let config = GraphConfig::default();
-    let g = Graph::from(config);
+    let g = Graph::from(config).expect("Failed to create graph");
 
     // done! just try it
     let all_files = g.files();
