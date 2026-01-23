@@ -550,4 +550,40 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             info!("symbol: {:?}", each);
         })
     }
+
+    #[test]
+    fn test_python_blacklist_self() {
+        let code = r#"
+class MyClass:
+    def method(self, arg1):
+        print(self.prop)
+"#;
+        let symbols = Extractor::Python.extract(&"test.py".to_string(), &code.to_string());
+        // "self" should be filtered by the blacklist in rule.rs
+        let has_self = symbols.iter().any(|s| s.name == "self");
+        assert!(!has_self, "Symbol 'self' should be blacklisted and ignored");
+        
+        // Ensure other symbols are still there
+        assert!(symbols.iter().any(|s| s.name == "MyClass"), "MyClass should be extracted");
+        assert!(symbols.iter().any(|s| s.name == "method"), "method should be extracted");
+    }
+
+    #[test]
+    fn test_go_regex_filter_underscore() {
+        let code = r#"
+package main
+func main() {
+    _ = "ignore me"
+    val := "keep me"
+}
+"#;
+        let symbols = Extractor::Go.extract(&"test.go".to_string(), &code.to_string());
+        // "_" should be filtered by the exclude_regex in rule.rs
+        let has_underscore = symbols.iter().any(|s| s.name == "_");
+        assert!(!has_underscore, "Symbol '_' should be filtered by regex and ignored");
+        
+        // Ensure other symbols are still there
+        assert!(symbols.iter().any(|s| s.name == "main"), "main should be extracted");
+        assert!(symbols.iter().any(|s| s.name == "val"), "val should be extracted");
+    }
 }
