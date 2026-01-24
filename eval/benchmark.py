@@ -48,8 +48,15 @@ def evaluate(repo_path, output_tag):
     elif os.path.exists(os.path.join(repo_path, "package.json")):
         if run_cmd(f"scip-typescript index {repo_path} --output {scip_file}"):
             has_scip = True
+
+    # 1.3 Java / Kotlin
+    elif os.path.exists(os.path.join(repo_path, "build.gradle")) or \
+         os.path.exists(os.path.join(repo_path, "build.gradle.kts")) or \
+         os.path.exists(os.path.join(repo_path, "pom.xml")):
+        if run_cmd(f"scip-java index --output {scip_file}", cwd=repo_path):
+            has_scip = True
             
-    # 1.3 Go
+    # 1.4 Go
     elif os.path.exists(os.path.join(repo_path, "go.mod")):
         scip_go_bin = "scip-go"
         gopath_res = subprocess.run("go env GOPATH", shell=True, capture_output=True, text=True)

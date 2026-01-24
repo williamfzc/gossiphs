@@ -32,9 +32,24 @@ run_bench() {
 }
 
 # Run Benchmarks
+# Rust
 run_bench "https://github.com/tree-sitter/tree-sitter" "tree-sitter"
+# Go
 run_bench "https://github.com/gin-gonic/gin" "gin"
+# TypeScript
 run_bench "https://github.com/typescript-eslint/typescript-eslint" "typescript-eslint"
+# Python
+run_bench "https://github.com/tiangolo/fastapi" "fastapi"
+# JavaScript
+run_bench "https://github.com/lodash/lodash" "lodash"
+# Java
+run_bench "https://github.com/projectlombok/lombok" "lombok"
+# Kotlin
+run_bench "https://github.com/android/nowinandroid" "nowinandroid"
+# Swift
+run_bench "https://github.com/SwiftyJSON/SwiftyJSON" "SwiftyJSON"
+# C#
+run_bench "https://github.com/JamesNK/Newtonsoft.Json" "Newtonsoft.Json"
 
 echo "========================================"
 echo "All real world benchmarks finished."
