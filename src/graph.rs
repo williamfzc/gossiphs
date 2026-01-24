@@ -133,6 +133,11 @@ impl Graph {
             ("kt", &Extractor::Kotlin),
             ("swift", &Extractor::Swift),
             ("cs", &Extractor::CSharp),
+            ("c", &Extractor::C),
+            ("h", &Extractor::C),
+            ("cpp", &Extractor::Cpp),
+            ("cc", &Extractor::Cpp),
+            ("hpp", &Extractor::Cpp),
         ]
         .into_iter()
         .collect();
@@ -572,8 +577,10 @@ impl Graph {
                         if ref_count_in_file > 0 {
                             score /= ref_count_in_file as f64;
                         }
-                        if score < 1.0 {
-                            score = 1.0;
+                        
+                        // Confidence Threshold Filter
+                        if score < conf.min_score {
+                            continue;
                         }
 
                         ratio_map
@@ -715,6 +722,9 @@ pub struct GraphConfig {
     pub commit_id: Option<String>,
 
     #[pyo3(get, set)]
+    pub min_score: f64,
+
+    #[pyo3(get, set)]
     pub enable_cache: bool,
 }
 
@@ -734,6 +744,7 @@ impl GraphConfig {
             exclude_commit_regex: None,
             issue_regex: None,
             commit_id: None,
+            min_score: 0.01,
             enable_cache: true,
         }
     }
@@ -915,7 +926,7 @@ mod tests {
             },
         ];
 
-        let (global_def, global_ref, _) = Graph::build_global_symbol_table(&contexts);
+        let (global_def, global_ref, _, _) = Graph::build_global_symbol_table(&contexts);
         let filtered = Graph::filter_pointless_symbols(contexts, &global_def, &global_ref, 0);
 
         let symbols_a = &filtered[0].symbols;
@@ -954,7 +965,7 @@ mod tests {
         ];
 
         // Build global symbol table
-        let (global_def, _, _) = Graph::build_global_symbol_table(&contexts);
+        let (global_def, _, _, _) = Graph::build_global_symbol_table(&contexts);
         
         // Core verification: ref_data ("DataService.validate") tries to find definition
         // It should NOT find it because it doesn't match def_auth ("AuthService.validate")

@@ -250,5 +250,49 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
             namespace_filter_level: 1,
             ..Default::default()
         },
+
+        Extractor::C => Rule {
+            import_grammar: r#"
+(identifier) @variable_name
+"#,
+            export_grammar: r#"
+(function_definition declarator: (function_declarator [ (identifier) @exported_symbol (field_identifier) @exported_symbol ]))
+(struct_specifier name: (type_identifier) @exported_symbol)
+(enum_specifier name: (type_identifier) @exported_symbol)
+"#,
+            dep_grammar: r#"
+(preproc_include path: [ (string_literal) @import (system_lib_string) @import ])
+"#,
+            namespace_grammar: r#"
+(function_definition) @body
+"#,
+            namespace_filter_level: 1,
+            ..Default::default()
+        },
+
+        Extractor::Cpp => Rule {
+            import_grammar: r#"
+(identifier) @variable_name
+(type_identifier) @variable_name
+(field_identifier) @variable_name
+"#,
+            export_grammar: r#"
+(function_definition declarator: (function_declarator [ (identifier) @exported_symbol (field_identifier) @exported_symbol ]))
+(class_specifier name: (type_identifier) @exported_symbol)
+(struct_specifier name: (type_identifier) @exported_symbol)
+(namespace_definition name: (_) @exported_symbol)
+"#,
+            dep_grammar: r#"
+(preproc_include path: (string_literal) @import)
+(preproc_include path: (system_lib_string) @import)
+"#,
+            namespace_grammar: r#"
+(function_definition) @body
+(class_specifier) @body
+(namespace_definition) @body
+"#,
+            namespace_filter_level: 1,
+            ..Default::default()
+        },
     }
 }

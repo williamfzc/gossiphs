@@ -20,6 +20,8 @@ pub enum Extractor {
     Kotlin,
     Swift,
     CSharp,
+    C,
+    Cpp,
 }
 
 const DEFAULT_NAMESPACE_REPR: &str = "<NS>";
@@ -39,6 +41,8 @@ impl Extractor {
             Extractor::Kotlin => tree_sitter_kotlin::language(),
             Extractor::Swift => tree_sitter_swift::language(),
             Extractor::CSharp => tree_sitter_c_sharp::language(),
+            Extractor::C => tree_sitter_c::language(),
+            Extractor::Cpp => tree_sitter_cpp::language(),
         };
         let result = self._extract(f.clone(), s, &lang);
         result.unwrap_or_else(|e| {
@@ -92,14 +96,17 @@ impl Extractor {
                 let mut matched_own_name = false;
 
                 // 1. Try field names - standard and reliable
-                for field_name in &["name", "identifier", "declarator", "type", "object", "operand", "receiver", "trait"] {
+                for field_name in &["name", "identifier", "declarator", "object", "operand", "receiver", "trait"] {
                     if let Some(name_node) = parent.child_by_field_name(field_name) {
                         if name_node == node {
                             matched_own_name = true;
                             break;
                         }
                         if let Ok(name_str) = name_node.utf8_text(s.as_bytes()) {
-                            let n = name_str.to_string();
+                            let mut n = name_str.to_string();
+                            if n.contains('(') {
+                                n = n.split('(').next().unwrap_or("").trim().to_string();
+                            }
                             if !n.is_empty() && n != "self" && n != "this" {
                                 found_name = Some(n);
                                 break;
@@ -130,7 +137,10 @@ impl Extractor {
                             let child_kind = child.kind();
                             if child_kind.contains("identifier") || child_kind == "type_identifier" {
                                 if let Ok(name_str) = child.utf8_text(s.as_bytes()) {
-                                    let n = name_str.to_string();
+                                    let mut n = name_str.to_string();
+                                    if n.contains('(') {
+                                        n = n.split('(').next().unwrap_or("").trim().to_string();
+                                    }
                                     if !n.is_empty() && n != "self" && n != "this" {
                                         found_name = Some(n);
                                         break;
@@ -236,7 +246,7 @@ impl Extractor {
                         if let Ok(str_slice) = matched_node.utf8_text(s.as_bytes()) {
                             let string = str_slice.to_string();
                             // clean up quotes for interpreted strings
-                            let clean_string = string.trim_matches(|c| c == '"' || c == '\'').to_string();
+                            let clean_string = string.trim_matches(|c| c == '"' || c == '\'' || c == '<' || c == '>').to_string();
                             
                             let shared_name = get_shared_name(clean_string);
                             let dep_node = Symbol::new_import(f.clone(), shared_name, range);
@@ -321,7 +331,7 @@ func MyFunction(a int) int {
             &[
                 ("MyFunction", SymbolKind::DEF),
                 ("MyFunction.fmt", SymbolKind::REF),
-                ("MyFunction.Println", SymbolKind::REF),
+                ("MyFunction.fmt.Println", SymbolKind::REF),
             ],
         );
     }
@@ -553,6 +563,65 @@ public class DataService {
         let save_ref = symbols.iter().find(|s| s.name.as_ref() == "DataService.save.validate").unwrap();
         
         assert_ne!(login_ref.name, save_ref.name);
+    }
+
+    #[test]
+    fn extract_c() {
+        let code = r#"
+#include "my_header.h"
+#include <stdio.h>
+
+struct MyStruct { int a; };
+
+void my_function() {
+    printf("hello");
+}
+"#;
+        let symbols = Extractor::C.extract(Arc::new(String::from("test.c")), &String::from(code));
+        check_symbols(
+            &symbols,
+            &[
+                ("my_function", SymbolKind::DEF),
+                ("MyStruct", SymbolKind::DEF),
+                ("my_function.printf", SymbolKind::REF),
+                ("my_header.h", SymbolKind::IMPORT),
+                ("stdio.h", SymbolKind::IMPORT),
+            ],
+        );
+    }
+
+    #[test]
+    fn extract_cpp() {
+        let code = r#"
+#include <iostream>
+#include "utils.hpp"
+
+namespace my_ns {
+    class MyClass {
+    public:
+        void my_method() {
+            std::cout << "hi";
+        }
+    };
+}
+
+void global_func() {
+    my_ns::MyClass c;
+    c.my_method();
+}
+"#;
+        let symbols = Extractor::Cpp.extract(Arc::new(String::from("test.cpp")), &String::from(code));
+        check_symbols(
+            &symbols,
+            &[
+                ("my_ns", SymbolKind::DEF),
+                ("my_ns.MyClass", SymbolKind::DEF),
+                ("my_ns.MyClass.my_method", SymbolKind::DEF),
+                ("global_func", SymbolKind::DEF),
+                ("iostream", SymbolKind::IMPORT),
+                ("utils.hpp", SymbolKind::IMPORT),
+            ],
+        );
     }
 
     #[test]

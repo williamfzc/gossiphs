@@ -50,6 +50,10 @@ run_bench "https://github.com/android/nowinandroid" "nowinandroid"
 run_bench "https://github.com/SwiftyJSON/SwiftyJSON" "SwiftyJSON"
 # C#
 run_bench "https://github.com/JamesNK/Newtonsoft.Json" "Newtonsoft.Json"
+# C
+run_bench "https://github.com/redis/redis" "redis"
+# C++
+run_bench "https://github.com/google/leveldb" "leveldb"
 
 echo "========================================"
 echo "All real world benchmarks finished."
