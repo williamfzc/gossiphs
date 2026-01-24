@@ -25,3 +25,28 @@ This document summarizes the core principles and development habits established 
 ## 5. Performance and Scaling
 - **Monorepo Support**: For large monorepos, use the `commit_size_limit_ratio` to ignore "fat commits" that create noise.
 - **Incremental Analysis**: Leverage the `.gossiphs/cache` for faster iterations during evaluation.
+
+## 6. System Workflow
+
+```mermaid
+graph TD
+    A[Git Repository] --> B[Git History Analysis]
+    A --> C[Static Code Extraction]
+    
+    B --> D[Logical Coupling Calculation]
+    C --> E[Symbol Table Construction]
+    C --> F[Explicit Import Extraction]
+    
+    D --> G[Graph Weighting & Filtering]
+    E --> G
+    F --> G
+    
+    G --> H[Final Relationship Graph]
+    H --> I[API / CLI / Plugin Output]
+```
+
+The pipeline combines two main signal sources:
+1. **Dynamic Signals (Git)**: Extracts "Logical Coupling" by looking at files that tend to change together.
+2. **Static Signals (Tree-sitter)**: Extracts "Physical Dependencies" through explicit imports and symbol definitions.
+
+These are merged into a unified graph where physical links serve as ground truth (high weight) and logical links provide architectural context.
