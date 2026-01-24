@@ -19,7 +19,6 @@ pub struct Rule {
     pub(crate) dep_grammar: &'static str,
 
     // namespace control
-    pub(crate) namespace_grammar: &'static str,
     pub(crate) namespace_filter_level: usize,
 
     // filter control
@@ -33,7 +32,6 @@ impl Default for Rule {
             import_grammar: "",
             export_grammar: "",
             dep_grammar: "",
-            namespace_grammar: "",
             namespace_filter_level: 0,
             exclude_regex: None,
             blacklist: Vec::new(),
@@ -65,6 +63,10 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (generic_function
   function: (scoped_identifier
     name: (identifier) @exported_symbol))
+(struct_item name: (type_identifier) @exported_symbol)
+(enum_item name: (type_identifier) @exported_symbol)
+(trait_item name: (type_identifier) @exported_symbol)
+(mod_item name: (identifier) @exported_symbol)
 "#,
             dep_grammar: r#"
 (use_declaration
@@ -72,10 +74,6 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
     path: (identifier) @import))
 (use_declaration
   argument: (identifier) @import)
-"#,
-            namespace_grammar: r#"
-(function_item) @body
-(generic_function) @body
 "#,
             namespace_filter_level: 1,
             ..Default::default()
@@ -101,12 +99,6 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (import_statement
   source: (string (string_fragment) @import))
 "#,
-            namespace_grammar: r#"
-(class_declaration) @body
-(function_declaration) @body
-(interface_declaration) @body
-(method_definition) @body
-"#,
             namespace_filter_level: 1,
             ..Default::default()
         },
@@ -129,10 +121,6 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (import_spec
   path: (interpreted_string_literal) @import)
 "#,
-            namespace_grammar: r#"
-(function_declaration) @body
-(method_declaration) @body
-"#,
             namespace_filter_level: 1,
             exclude_regex: Some(r#"^_$"#),
             ..Default::default()
@@ -145,10 +133,6 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
             export_grammar: r#"
 (function_definition name: (identifier) @exported_symbol)
 (class_definition name: (identifier) @exported_symbol)
-"#,
-            namespace_grammar: r#"
-(function_definition) @body
-(class_definition) @body
 "#,
             namespace_filter_level: 2,
             blacklist: vec!["self"],
@@ -163,10 +147,6 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (function_declaration name: (identifier) @exported_symbol)
 (class_declaration name: (identifier) @exported_symbol)
     "#,
-            namespace_grammar: r#"
-(function_declaration) @body
-(class_declaration) @body
-"#,
             namespace_filter_level: 2,
             ..Default::default()
         },
@@ -182,10 +162,6 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (enum_declaration name: (identifier) @exported_symbol)
 (field_declaration (variable_declarator name: (identifier) @exported_symbol))
   "#,
-            namespace_grammar: r#"
-(class_declaration) @body
-(method_declaration) @body
-"#,
             namespace_filter_level: 1,
             ..Default::default()
         },
@@ -200,10 +176,6 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (property_declaration (variable_declaration (simple_identifier) @exported_symbol))
 (object_declaration (type_identifier) @exported_symbol)
   "#,
-            namespace_grammar: r#"
-(class_declaration) @body
-(function_declaration) @body
-"#,
             namespace_filter_level: 1,
             ..Default::default()
         },
@@ -218,10 +190,6 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (protocol_declaration name: (type_identifier) @exported_symbol)
 (typealias_declaration name: (type_identifier) @exported_symbol)
   "#,
-            namespace_grammar: r#"
-(function_declaration) @body
-(class_declaration) @body
-"#,
             namespace_filter_level: 1,
             ..Default::default()
         },
@@ -241,12 +209,6 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (property_declaration name: (identifier) @exported_symbol)
 (field_declaration (variable_declaration (variable_declarator (identifier) @exported_symbol)))
 "#,
-            namespace_grammar: r#"
-(namespace_declaration) @body
-(class_declaration) @body
-(struct_declaration) @body
-(interface_declaration) @body
-"#,
             namespace_filter_level: 1,
             ..Default::default()
         },
@@ -262,9 +224,6 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 "#,
             dep_grammar: r#"
 (preproc_include path: [ (string_literal) @import (system_lib_string) @import ])
-"#,
-            namespace_grammar: r#"
-(function_definition) @body
 "#,
             namespace_filter_level: 1,
             ..Default::default()
@@ -285,11 +244,6 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
             dep_grammar: r#"
 (preproc_include path: (string_literal) @import)
 (preproc_include path: (system_lib_string) @import)
-"#,
-            namespace_grammar: r#"
-(function_definition) @body
-(class_specifier) @body
-(namespace_definition) @body
 "#,
             namespace_filter_level: 1,
             ..Default::default()

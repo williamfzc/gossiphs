@@ -10,7 +10,7 @@ use anyhow::{Context, Result};
 use cupido::collector::config::Collect;
 use cupido::collector::config::{get_collector, Config};
 use cupido::relation::graph::RelationGraph as CupidoRelationGraph;
-use git2::Repository;
+use git2::{Oid, Repository};
 use indicatif::ProgressBar;
 use pyo3::{pyclass, pymethods};
 use rayon::iter::IntoParallelIterator;
@@ -437,7 +437,7 @@ impl Graph {
         // 3. Extract symbols from files
         let file_contexts = Self::extract_file_contexts(
             &conf,
-            files,
+            files.clone(),
         )?;
         info!("symbol extract finished, files: {}", file_contexts.len());
 
@@ -475,6 +475,43 @@ impl Graph {
                 touched.len() < ((file_len as f32) * conf.commit_size_limit_ratio) as usize
             })
             .collect();
+
+        // 6.1 Pre-cache commit timestamps for temporal decay
+        let mut commit_timestamps: HashMap<String, i64> = HashMap::new();
+        if conf.temporal_decay {
+            if let Ok(repo) = Repository::open(&conf.project_path) {
+                for commit_sha in &valid_commits {
+                    if let Ok(oid) = Oid::from_str(commit_sha) {
+                        if let Ok(commit) = repo.find_commit(oid) {
+                            commit_timestamps.insert(commit_sha.clone(), commit.time().seconds());
+                        }
+                    }
+                }
+            }
+        }
+        let now_ts = commit_timestamps.values().cloned().max().unwrap_or(0);
+
+        // 6.2 Pre-calculate decayed cardinality for each file
+        let mut file_decayed_cardinality: HashMap<String, f64> = HashMap::new();
+        for file in &files {
+            let commits = relation_graph.file_related_commits(file).unwrap_or_default();
+            let mut score = 0.0;
+            for c in commits {
+                if valid_commits.contains(&c) {
+                    if conf.temporal_decay {
+                        if let Some(&ts) = commit_timestamps.get(&c) {
+                            let age_days = (now_ts - ts) as f64 / 86400.0;
+                            score += 2.0f64.powf(-age_days / conf.half_life_days);
+                        } else {
+                            score += 1.0;
+                        }
+                    } else {
+                        score += 1.0;
+                    }
+                }
+            }
+            file_decayed_cardinality.insert(file.clone(), score);
+        }
 
         let mut file_valid_commits_cache: HashMap<String, HashSet<String>> = HashMap::new();
         let mut get_file_valid_commits = |f: &str| -> HashSet<String> {
@@ -544,7 +581,7 @@ impl Graph {
                     continue;
                 }
 
-                let mut ratio_map: BTreeMap<usize, Vec<&Symbol>> = BTreeMap::new();
+                let mut scored_defs = Vec::new();
                 for (def, _is_exact_match) in potential_defs {
                     // 1. Symbol Specificity (IDF)
                     let idf = *def_idfs.get(&def.name).unwrap_or(&1.0);
@@ -558,32 +595,33 @@ impl Graph {
 
                     // 3. Logical Evidence (Jaccard Similarity based on Commits)
                     let ref_related_commits = get_file_valid_commits(def.file.as_ref());
-                    let intersection_count = def_related_commits
-                        .iter()
-                        .filter(|c| ref_related_commits.contains(*c))
-                        .count();
+                    let mut intersection_score = 0.0;
+                    for c in def_related_commits.iter().filter(|c| ref_related_commits.contains(*c)) {
+                        if conf.temporal_decay {
+                            if let Some(&ts) = commit_timestamps.get(c) {
+                                let age_days = (now_ts - ts) as f64 / 86400.0;
+                                intersection_score += 2.0f64.powf(-age_days / conf.half_life_days);
+                            } else {
+                                intersection_score += 1.0;
+                            }
+                        } else {
+                            intersection_score += 1.0;
+                        }
+                    }
 
-                    let union_count = def_related_commits.len() + ref_related_commits.len() - intersection_count;
-                    let jaccard = if union_count > 0 {
-                        intersection_count as f64 / union_count as f64
+                    let file_a_decay = *file_decayed_cardinality.get(file_context.path.as_ref()).unwrap_or(&0.0);
+                    let file_b_decay = *file_decayed_cardinality.get(def.file.as_ref()).unwrap_or(&0.0);
+
+                    let union_decay = file_a_decay + file_b_decay - intersection_score;
+                    let jaccard = if union_decay > 0.0 {
+                        intersection_score / union_decay
                     } else {
                         0.0
                     };
 
-                    // 4. Adaptive Filtering (Collision Mitigation)
-                    // We use (IDF * Jaccard) as a confidence measure.
-                    // If it's a common symbol (low IDF) and has weak logical coupling, skip.
-                    if !has_physical_link {
-                        let confidence = idf * jaccard;
-                        // This threshold is more adaptive than a hardcoded "count < 3"
-                        if confidence < 0.1 {
-                            continue;
-                        }
-                    }
-
-                    // 5. Scoring
-                    // Use a combination of IDF and Jaccard for the base score
-                    let mut score = idf * jaccard * 10.0;
+                    // 4. Scoring & Normalization
+                    let confidence = idf * jaccard;
+                    let mut score = confidence * 10.0;
 
                     // Physical evidence still gives a strong signal
                     if has_physical_link {
@@ -593,13 +631,37 @@ impl Graph {
                         }
                     }
 
-                    // Adjust score by file complexity (optional but kept for compatibility)
+                    // Adjust score by file complexity
                     let ref_count_in_file = get_symbol_count(&def.file, &symbol_graph);
                     if ref_count_in_file > 0 {
-                        score /= (ref_count_in_file as f64).sqrt(); // Use sqrt to dampen the effect
+                        score /= (ref_count_in_file as f64).sqrt();
                     }
+                    
+                    scored_defs.push((def, score, has_physical_link));
+                }
 
-                    if score < conf.min_score {
+                // 5. Entropy-based Pruning (Mitigate Ambiguity)
+                if scored_defs.len() > 1 {
+                    let sum: f64 = scored_defs.iter().map(|(_, s, _)| *s).sum();
+                    if sum > 0.0 {
+                        let mut entropy = 0.0;
+                        for &(_, s, _) in &scored_defs {
+                            let p = s / sum;
+                            if p > 0.0 {
+                                entropy -= p * p.ln();
+                            }
+                        }
+                        // Penalty: distributed credit. If 2 choices are equal, each gets 0.5.
+                        let penalty = (-entropy).exp();
+                        for (_, s, _) in &mut scored_defs {
+                            *s *= penalty;
+                        }
+                    }
+                }
+
+                let mut ratio_map: BTreeMap<usize, Vec<&Symbol>> = BTreeMap::new();
+                for (def, score, has_physical_link) in scored_defs {
+                    if !has_physical_link && score < conf.min_score {
                         continue;
                     }
 
@@ -759,6 +821,12 @@ pub struct GraphConfig {
 
     #[pyo3(get, set)]
     pub enable_cache: bool,
+
+    #[pyo3(get, set)]
+    pub temporal_decay: bool,
+
+    #[pyo3(get, set)]
+    pub half_life_days: f64,
 }
 
 #[pymethods]
@@ -780,6 +848,8 @@ impl GraphConfig {
             min_score: 0.01,
             max_def_ratio: 0.1,
             enable_cache: true,
+            temporal_decay: true,
+            half_life_days: 365.0,
         }
     }
 }

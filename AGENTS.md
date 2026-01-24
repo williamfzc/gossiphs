@@ -18,7 +18,9 @@ This document summarizes the core principles and development habits established 
     - Qualified names require at least 1 common commit.
 - **Dynamic Specificity Filtering (IDF)**: Use Inverse Document Frequency to weight symbols. Rare symbols (high IDF) contribute more to the score than common ones (low IDF, e.g., `init`).
 - **Adaptive Collision Mitigation**: Instead of hard counts, use `Confidence = IDF * JaccardSimilarity`. Links with low confidence are pruned unless backed by physical evidence.
+- **Entropy-based Pruning**: For ambiguous symbols with many potential definitions, use Shannon entropy to penalize and prune low-signal links. This effectively "distributes credit" and suppresses noise in large projects.
 - **Score-Gap Pruning**: When multiple definitions match a reference, only keep those within 80% of the top score. This prevents "ambiguous" links from polluting the graph.
+- **Temporal Decay**: Prefer recent evidence over historical data. Commits are weighted using an exponential decay function based on their age (half-life default: 365 days).
 
 ## 4. Evaluation Habits
 - **Full History**: Always use full Git history (`depth: 0` or large enough) for evaluation to capture long-term logical coupling.

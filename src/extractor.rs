@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tree_sitter::{Language, Parser, Query, QueryCursor};
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Extractor {
     Rust,
     TypeScript,
@@ -23,8 +24,6 @@ pub enum Extractor {
     C,
     Cpp,
 }
-
-const DEFAULT_NAMESPACE_REPR: &str = "<NS>";
 
 impl Extractor {
     pub fn get_rule(&self) -> Rule {
@@ -92,72 +91,113 @@ impl Extractor {
             let mut path = Vec::new();
             let mut curr = node.parent();
             while let Some(parent) = curr {
-                let mut found_name = None;
-                let mut matched_own_name = false;
+                let mut container_name = None;
+                let mut is_primary_name = false;
+                let kind = parent.kind().to_lowercase();
 
-                // 1. Try field names - standard and reliable
-                for field_name in &["name", "identifier", "declarator", "object", "operand", "receiver", "trait"] {
+                let is_container_kind = kind.contains("class")
+                    || kind.contains("function")
+                    || kind.contains("method")
+                    || kind.contains("namespace")
+                    || kind.contains("module")
+                    || kind.contains("interface")
+                    || kind.contains("struct")
+                    || kind.contains("enum")
+                    || kind.contains("object")
+                    || kind.contains("trait")
+                    || kind.contains("impl");
+
+                // 1. Check if this node is the primary name of the parent
+                for field_name in &["name", "identifier", "declarator"] {
                     if let Some(name_node) = parent.child_by_field_name(field_name) {
                         if name_node == node {
-                            matched_own_name = true;
+                            is_primary_name = true;
                             break;
+                        }
+                    }
+                }
+
+                // 2. Try container-specific fields (always higher priority)
+                for field_name in &["receiver", "object", "operand", "trait", "namespace", "scope"] {
+                    if let Some(name_node) = parent.child_by_field_name(field_name) {
+                        if name_node == node {
+                            continue;
                         }
                         if let Ok(name_str) = name_node.utf8_text(s.as_bytes()) {
                             let mut n = name_str.to_string();
-                            if n.contains('(') {
-                                n = n.split('(').next().unwrap_or("").trim().to_string();
+                            match self {
+                                Extractor::Go => {
+                                    if n.contains('(') || n.contains('*') {
+                                        let clean = n
+                                            .replace(['(', ')', '*'], " ")
+                                            .split_whitespace()
+                                            .last()
+                                            .unwrap_or("")
+                                            .to_string();
+                                        if !clean.is_empty() {
+                                            n = clean;
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    if n.contains('(') {
+                                        n = n.split('(').next().unwrap_or("").trim().to_string();
+                                    }
+                                }
                             }
                             if !n.is_empty() && n != "self" && n != "this" {
-                                found_name = Some(n);
+                                container_name = Some(n);
                                 break;
                             }
                         }
                     }
                 }
 
-                // 2. Fallback: Check for identifier-like children in naming-related nodes
-                if !matched_own_name && found_name.is_none() {
-                    let kind = parent.kind().to_lowercase();
-                    if kind.contains("class")
-                        || kind.contains("function")
-                        || kind.contains("method")
-                        || kind.contains("namespace")
-                        || kind.contains("module")
-                        || kind.contains("interface")
-                        || kind.contains("struct")
-                        || kind.contains("enum")
-                        || kind.contains("object")
-                    {
-                        for i in 0..parent.child_count() {
-                            let child = parent.child(i).unwrap();
-                            if child == node {
-                                matched_own_name = true;
-                                break;
-                            }
-                            let child_kind = child.kind();
-                            if child_kind.contains("identifier") || child_kind == "type_identifier" {
-                                if let Ok(name_str) = child.utf8_text(s.as_bytes()) {
-                                    let mut n = name_str.to_string();
-                                    if n.contains('(') {
-                                        n = n.split('(').next().unwrap_or("").trim().to_string();
-                                    }
-                                    if !n.is_empty() && n != "self" && n != "this" {
-                                        found_name = Some(n);
-                                        break;
-                                    }
+                // 3. Try standard naming fields if it's a container kind and not the primary name
+                if container_name.is_none() && is_container_kind && !is_primary_name {
+                    for field_name in &["name", "identifier", "declarator"] {
+                        if let Some(name_node) = parent.child_by_field_name(field_name) {
+                            if let Ok(name_str) = name_node.utf8_text(s.as_bytes()) {
+                                let mut n = name_str.to_string();
+                                if n.contains('(') {
+                                    n = n.split('(').next().unwrap_or("").trim().to_string();
+                                }
+                                if !n.is_empty() && n != "self" && n != "this" {
+                                    container_name = Some(n);
+                                    break;
                                 }
                             }
                         }
                     }
                 }
 
-                if !matched_own_name {
-                    if let Some(n) = found_name {
-                        // Avoid redundant path elements or adding the name itself
-                        let last_in_path = path.last().map(|s: &String| s.as_str()).unwrap_or(name);
-                        if last_in_path != n {
-                            path.push(n);
+                // 4. Fallback for container nodes without explicit field names
+                if container_name.is_none() && is_container_kind && !is_primary_name {
+                    for i in 0..parent.child_count() {
+                        let child = parent.child(i).unwrap();
+                        if child == node {
+                            continue;
                         }
+                        let child_kind = child.kind();
+                        if child_kind.contains("identifier") || child_kind == "type_identifier" {
+                            if let Ok(name_str) = child.utf8_text(s.as_bytes()) {
+                                let mut n = name_str.to_string();
+                                if n.contains('(') {
+                                    n = n.split('(').next().unwrap_or("").trim().to_string();
+                                }
+                                if !n.is_empty() && n != "self" && n != "this" {
+                                    container_name = Some(n);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let Some(n) = container_name {
+                    let last_in_path = path.last().map(|s: &String| s.as_str()).unwrap_or(name);
+                    if last_in_path != n {
+                        path.push(n);
                     }
                 }
                 curr = parent.parent();
@@ -270,6 +310,9 @@ mod tests {
     fn check_symbols(symbols: &[Symbol], expected: &[(&str, SymbolKind)]) {
         for (name, kind) in expected {
             let found = symbols.iter().any(|s| s.name.as_ref() == *name && s.kind == *kind);
+            if !found {
+                println!("Extracted symbols: {:?}", symbols.iter().map(|s| format!("{}: {:?}", s.name, s.kind)).collect::<Vec<_>>());
+            }
             assert!(
                 found,
                 "Symbol '{}' with kind {:?} not found in extracted symbols",
@@ -332,6 +375,23 @@ func MyFunction(a int) int {
                 ("MyFunction", SymbolKind::DEF),
                 ("MyFunction.fmt", SymbolKind::REF),
                 ("MyFunction.fmt.Println", SymbolKind::REF),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_go_method_receiver() {
+        let code = r#"
+package main
+type MyStruct struct {}
+func (s *MyStruct) MyMethod() {}
+"#;
+        let symbols = Extractor::Go.extract(Arc::new("test.go".to_string()), &code.to_string());
+        check_symbols(
+            &symbols,
+            &[
+                ("MyStruct", SymbolKind::DEF),
+                ("MyStruct.MyMethod", SymbolKind::DEF),
             ],
         );
     }
@@ -643,5 +703,26 @@ class Outer:
             ("Outer.helper", SymbolKind::DEF),
             ("Outer.Inner.method.helper", SymbolKind::REF),
         ]);
+    }
+
+    #[test]
+    fn test_rust_impl_block() {
+        let code = r#"
+struct MyStruct;
+impl MyStruct {
+    pub fn my_method(&self) {
+        other_func();
+    }
+}
+"#;
+        let symbols = Extractor::Rust.extract(Arc::new("test.rs".to_string()), &code.to_string());
+        check_symbols(
+            &symbols,
+            &[
+                ("MyStruct", SymbolKind::DEF),
+                ("MyStruct.my_method", SymbolKind::DEF),
+                ("MyStruct.my_method.other_func", SymbolKind::REF),
+            ],
+        );
     }
 }

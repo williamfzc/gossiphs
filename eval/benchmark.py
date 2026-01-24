@@ -125,6 +125,69 @@ def evaluate(repo_path, output_tag):
         else:
             gossiphs_normalized.add(f"ANY:{s['name']}")
 
+    # Grep Baseline calculation (Naive symbol matching)
+    print(f">>> [{output_tag}] Calculating Grep Baseline...")
+    def get_base_name(scip_name):
+        return normalize_scip_name(scip_name)
+
+    # 1. Collect all defined symbols and their files
+    name_to_def_files = {}
+    for s in scip_syms:
+        # In SCIP, we can infer DEF if it has a specific format or if we use the scip_file_links
+        # But a simpler way: if it's in scip_symbols, it's a known symbol.
+        # Let's use the ones that are actually used in scip_file_links as the "truth"
+        pass
+    
+    # Actually, let's use the symbols that are DSTs in scip_file_links
+    truth_defs = {} # name -> set of files
+    for l in scip_file_links_raw:
+        dst = norm_path(l['dst_file'])
+        # We don't have the symbol name in file_links, but we have it in 'relations'
+        pass
+    
+    # Let's use 'relations' from aligned data if available
+    scip_relations = data['scip'].get('relations', [])
+    for r in scip_relations:
+        name = get_base_name(r['symbol_name'])
+        dst = norm_path(r['dst_file'])
+        if name not in truth_defs:
+            truth_defs[name] = set()
+        truth_defs[name].add(dst)
+
+    # 2. For each file in the repo, check which symbols it "mentions"
+    grep_links_set = set()
+    repo_files = []
+    for root, _, files in os.walk(repo_path):
+        for f in files:
+            if f.endswith(('.go', '.rs', '.ts', '.js', '.py', '.cpp', '.c', '.h', '.hpp', '.cc')):
+                repo_files.append(os.path.relpath(os.path.join(root, f), repo_path))
+
+    # Pre-compile regex for all base names to speed up
+    if truth_defs:
+        import re
+        # Filter out very short or too common names to avoid regex explosion
+        valid_names = [n for n in truth_defs.keys() if len(n) > 3]
+        if valid_names:
+            # Match whole words only
+            # Using a single regex for all names might be too big, let's chunk it
+            chunk_size = 100
+            name_chunks = [valid_names[i:i + chunk_size] for i in range(0, len(valid_names), chunk_size)]
+            regex_chunks = [re.compile(r'\b(' + '|'.join(map(re.escape, chunk)) + r')\b') for chunk in name_chunks]
+
+            for rel_path in repo_files:
+                abs_path = os.path.join(repo_path, rel_path)
+                try:
+                    with open(abs_path, 'r', errors='ignore') as f:
+                        content = f.read()
+                        for rgx in regex_chunks:
+                            for match in rgx.finditer(content):
+                                name = match.group(1)
+                                for dst_file in truth_defs[name]:
+                                    if rel_path != dst_file:
+                                        grep_links_set.add(f"{rel_path} -> {dst_file}")
+                except Exception as e:
+                    print(f"Warning: could not read {abs_path}: {e}")
+
     sym_hits = []
     for g_key in gossiphs_normalized:
         if g_key.startswith("ANY:"):
@@ -140,30 +203,51 @@ def evaluate(repo_path, output_tag):
     def get_link_str(l, is_scip=False):
         src = norm_path(l['src_file']) if is_scip else l['src_file']
         dst = norm_path(l['dst_file']) if is_scip else l['dst_file']
+        
+        # Filter: only keep links within the repository scope
+        # (Exclude external libraries, caches, or system files)
+        if src.startswith('/') or src.startswith('..') or \
+           dst.startswith('/') or dst.startswith('..'):
+            return None
+            
         return f"{src} -> {dst}"
 
-    scip_links_set = set(get_link_str(l, True) for l in scip_file_links_raw)
-    gossiphs_links_set = set(get_link_str(l, False) for l in gossiphs_file_links_raw)
+    scip_links_raw = [get_link_str(l, True) for l in scip_file_links_raw]
+    scip_links_set = set(l for l in scip_links_raw if l is not None)
+    
+    gossiphs_links_raw = [get_link_str(l, False) for l in gossiphs_file_links_raw]
+    gossiphs_links_set = set(l for l in gossiphs_links_raw if l is not None)
     
     link_hits = scip_links_set.intersection(gossiphs_links_set)
     link_precision = len(link_hits) / len(gossiphs_links_set) if gossiphs_links_set else 0
     link_recall = len(link_hits) / len(scip_links_set) if scip_links_set else 0
     
+    # Grep Precision/Recall
+    grep_hits = scip_links_set.intersection(grep_links_set)
+    grep_precision = len(grep_hits) / len(grep_links_set) if grep_links_set else 0
+    grep_recall = len(grep_hits) / len(scip_links_set) if scip_links_set else 0
+
     print("\n" + "="*60)
-    print(f"COMPARISON REPORT (FILE DIMENSION): {output_tag}")
+    print(f"COMPARISON REPORT: {output_tag}")
     print(f"Path: {repo_path}")
     print("="*60)
-    print(f"[1. Symbol Precision]")
-    print(f"  - gossiphs symbols found: {len(gossiphs_normalized)}")
-    print(f"  - Precision:   {sym_precision:.2%}")
+    print(f"[1. Overall Metrics]")
+    print(f"  - Baseline (SCIP) Real Links:  {len(scip_links_set)}")
+    print(f"  - Grep (Naive) Links:          {len(grep_links_set)}")
+    print(f"  - gossiphs (Heuristic) Links:  {len(gossiphs_links_set)}")
     
-    print(f"\n[2. File-to-File Level]")
-    print(f"  - Baseline links (SCIP):   {len(scip_links_set)}")
-    print(f"  - gossiphs links:     {len(gossiphs_links_set)}")
-    print(f"  - Precision:   {link_precision:.2%}")
-    print(f"  - Recall:      {link_recall:.2%}")
-    print(f"  - Bonus logical links: {len(gossiphs_links_set - scip_links_set)}")
-    print("\n" + "="*60)
+    print(f"\n[2. Precision (Against SCIP)]")
+    print(f"  - Grep Precision:     {grep_precision:.2%}")
+    print(f"  - gossiphs Precision: {link_precision:.2%}")
+    
+    print(f"\n[3. Recall (Against SCIP)]")
+    print(f"  - Grep Recall:        {grep_recall:.2%}")
+    print(f"  - gossiphs Recall:    {link_recall:.2%}")
+    
+    print(f"\n[4. Architectural Context]")
+    print(f"  - Bonus Logical Links (gossiphs): {len(gossiphs_links_set - scip_links_set)}")
+    print(f"  - Avoided Noise Links (vs Grep):  {len(grep_links_set - gossiphs_links_set)}")
+    print("="*60 + "\n")
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
