@@ -19,8 +19,14 @@ use std::sync::Arc;
 pub struct RelatedFileContext {
     #[pyo3(get)]
     pub name: String,
+
+    #[pyo3(get)]
     pub score: usize,
+
+    #[pyo3(get)]
     pub defs: usize,
+
+    #[pyo3(get)]
     pub refs: usize,
 
     #[pyo3(get)]
@@ -125,19 +131,17 @@ impl Graph {
             .collect()
     }
 
-    /// All files which pointed to this file
+    /// All files which pointed to this file or pointed by this file
     pub fn related_files(&self, file_name: String) -> Vec<RelatedFileContext> {
         let file_name_arc = Arc::new(file_name);
         if !self.symbol_graph.file_mapping.contains_key(&file_name_arc) {
             return Vec::new();
         }
 
-        // find all the defs in this file
-        // and tracking all the references and theirs
         let mut file_counter = HashMap::new();
         let mut file_ref_mapping: HashMap<Arc<String>, Vec<RelatedSymbol>> = HashMap::new();
 
-        // other files -> this file
+        // 1. Other files -> this file (Incoming)
         let definitions_in_file = self.symbol_graph.list_definitions(&file_name_arc);
         let definition_count = definitions_in_file.len();
 
@@ -146,52 +150,38 @@ impl Graph {
                 .list_references_by_definition(&def.id())
                 .iter()
                 .for_each(|(each_ref, weight)| {
-                    let real_weight = std::cmp::max(weight / definition_count, 1);
+                    let real_weight = if definition_count > 0 { std::cmp::max(weight / definition_count, 1) } else { *weight };
 
-                    file_counter.entry(each_ref.file.clone()).or_insert(0);
-                    file_counter
-                        .entry(each_ref.file.clone())
-                        .and_modify(|w| *w += real_weight)
-                        .or_insert(real_weight);
+                    file_counter.entry(each_ref.file.clone()).and_modify(|w| *w += real_weight).or_insert(real_weight);
 
                     file_ref_mapping
                         .entry(each_ref.file.clone())
-                        .and_modify(|v| {
-                            v.push(RelatedSymbol {
-                                symbol: each_ref.clone(),
-                                weight: real_weight,
-                            })
-                        })
-                        .or_insert(vec![RelatedSymbol {
+                        .or_insert_with(Vec::new)
+                        .push(RelatedSymbol {
                             symbol: each_ref.clone(),
                             weight: real_weight,
-                        }]);
+                        });
                 });
         });
 
-        definitions_in_file.iter().for_each(|def| {
+        // 2. This file -> other files (Outgoing)
+        let references_in_file = self.symbol_graph.list_references(&file_name_arc);
+        references_in_file.iter().for_each(|ref_symbol| {
             self.symbol_graph
-                .list_references_by_definition(&def.id())
-                .into_iter()
-                .map(|s| s.0.file)
-                .for_each(|f| {
+                .list_definitions_by_reference(&ref_symbol.id())
+                .iter()
+                .for_each(|(each_def, weight)| {
+                    file_counter.entry(each_def.file.clone()).and_modify(|w| *w += weight).or_insert(*weight);
+
                     file_ref_mapping
-                        .entry(f.clone())
-                        .and_modify(|v| {
-                            v.push(RelatedSymbol {
-                                symbol: def.clone(),
-                                weight: 0,
-                            })
-                        })
-                        .or_insert(vec![RelatedSymbol {
-                            symbol: def.clone(),
-                            weight: 0,
-                        }]);
+                        .entry(each_def.file.clone())
+                        .or_insert_with(Vec::new)
+                        .push(RelatedSymbol {
+                            symbol: each_def.clone(),
+                            weight: *weight,
+                        });
                 });
         });
-
-        // this file -> other files
-        // TODO: need it?
 
         // remove itself
         file_counter.remove(&file_name_arc);
@@ -420,15 +410,22 @@ mod tests {
         g.symbol_graph.link_symbol_to_symbol(&ref_bar_c, &def_bar);
         g.symbol_graph.enhance_symbol_to_symbol(&ref_bar_c.id(), &def_bar.id(), 5);
 
-        // When we look for files related to file_a
-        let related = g.related_files(file_a.clone());
-        assert_eq!(related.len(), 2);
+        // Test Incoming: When we look for files related to file_a
+        let related_a = g.related_files(file_a.clone());
+        assert_eq!(related_a.len(), 2);
         
         // B: 10 / 2 = 5
         // C: (5/2) + (5/2) = 2 + 2 = 4
-        assert_eq!(related[0].name, file_b);
-        assert_eq!(related[0].score, 5);
-        assert_eq!(related[1].name, file_c);
-        assert_eq!(related[1].score, 4);
+        assert_eq!(related_a[0].name, file_b);
+        assert_eq!(related_a[0].score, 5);
+        assert_eq!(related_a[1].name, file_c);
+        assert_eq!(related_a[1].score, 4);
+
+        // Test Outgoing: When we look for files related to file_b
+        // File B references File A (foo) with weight 10
+        let related_b = g.related_files(file_b.clone());
+        assert_eq!(related_b.len(), 1);
+        assert_eq!(related_b[0].name, file_a);
+        assert_eq!(related_b[0].score, 10);
     }
 }

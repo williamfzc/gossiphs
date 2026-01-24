@@ -3,6 +3,7 @@ File: main.rs
 Functionality: Command-line interface (CLI) application entry point.
 Role: Provides the binary executable with various subcommands for graph analysis, server management, and integration.
 */
+use anyhow::Context;
 use clap::Parser;
 use csv::Writer;
 use git2::{Commit, DiffOptions, Error, Object, ObjectType, Repository};
@@ -211,23 +212,24 @@ impl RelateCommand {
     }
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let cli: Cli = Cli::parse();
 
     match cli.cmd {
-        SubCommand::Relate(search_cmd) => handle_relate(search_cmd),
-        SubCommand::Relation(relation_cmd) => handle_relation(relation_cmd),
-        SubCommand::Relation2(relation_cmd) => handle_relation_v2(relation_cmd),
-        SubCommand::Interactive(interactive_cmd) => handle_interactive(interactive_cmd),
-        SubCommand::Server(server_cmd) => handle_server(server_cmd),
-        SubCommand::Obsidian(obsidian_cmd) => handle_obsidian(obsidian_cmd),
-        SubCommand::Diff(diff_cmd) => handle_diff(diff_cmd),
+        SubCommand::Relate(search_cmd) => handle_relate(search_cmd)?,
+        SubCommand::Relation(relation_cmd) => handle_relation(relation_cmd)?,
+        SubCommand::Relation2(relation_cmd) => handle_relation_v2(relation_cmd)?,
+        SubCommand::Interactive(interactive_cmd) => handle_interactive(interactive_cmd)?,
+        SubCommand::Server(server_cmd) => handle_server(server_cmd)?,
+        SubCommand::Obsidian(obsidian_cmd) => handle_obsidian(obsidian_cmd)?,
+        SubCommand::Diff(diff_cmd) => handle_diff(diff_cmd)?,
     }
+    Ok(())
 }
 
-fn handle_relate(relate_cmd: RelateCommand) {
+fn handle_relate(relate_cmd: RelateCommand) -> anyhow::Result<()> {
     // result will be saved to file, so enable log
-    if !relate_cmd.json.is_none() {
+    if relate_cmd.json.is_some() {
         tracing_subscriber::fmt::init();
     }
     let mut config = GraphConfig::default();
@@ -235,16 +237,16 @@ fn handle_relate(relate_cmd: RelateCommand) {
     if relate_cmd.common_options.strict {
         config.def_limit = 1
     }
-    if !relate_cmd.common_options.depth.is_none() {
-        config.depth = relate_cmd.common_options.depth.unwrap();
+    if let Some(depth) = relate_cmd.common_options.depth {
+        config.depth = depth;
     }
 
-    let g = Graph::from(config).expect("Failed to create graph");
+    let g = Graph::from(config).context("Failed to create graph")?;
 
     let mut related_files_data = Vec::new();
     let files = relate_cmd.get_files();
     for file in &files {
-        let mut files = g.related_files(String::from(file));
+        let mut files = g.related_files(file.clone());
         if relate_cmd.ignore_zero {
             files.retain(|each| each.score > 0);
         }
@@ -254,21 +256,22 @@ fn handle_relate(relate_cmd: RelateCommand) {
         });
     }
     let json = serde_json::to_string(&related_files_data).unwrap();
-    if !relate_cmd.json.is_none() {
-        fs::write(relate_cmd.json.unwrap(), json).expect("");
+    if let Some(json_path) = relate_cmd.json {
+        fs::write(json_path, json).context("Failed to write JSON output")?;
     } else {
         println!("{}", json);
     }
+    Ok(())
 }
 
-fn handle_relation_v2(relation_cmd: RelationCommand) {
+fn handle_relation_v2(relation_cmd: RelationCommand) -> anyhow::Result<()> {
     let mut config = GraphConfig::default();
     config.project_path = relation_cmd.common_options.project_path.clone();
     if relation_cmd.common_options.strict {
         config.def_limit = 1;
     }
-    if relation_cmd.common_options.def_limit.is_some() {
-        config.def_limit = relation_cmd.common_options.def_limit.unwrap();
+    if let Some(def_limit) = relation_cmd.common_options.def_limit {
+        config.def_limit = def_limit;
     }
 
     if let Some(depth) = relation_cmd.common_options.depth {
@@ -279,34 +282,35 @@ fn handle_relation_v2(relation_cmd: RelationCommand) {
     }
     config.exclude_author_regex = relation_cmd.common_options.exclude_author_regex.clone();
 
-    let g = Graph::from(config).expect("Failed to create graph");
+    let g = Graph::from(config).context("Failed to create graph")?;
     let relation_list = g.list_all_relations();
 
     let mut writer =
-        BufWriter::new(File::create(relation_cmd.index_file).expect("Unable to create file"));
+        BufWriter::new(File::create(relation_cmd.index_file).context("Unable to create index file")?);
     for node in relation_list.file_nodes {
-        let serialized = serde_json::to_string(&node).expect("Failed to serialize FileNode");
-        writeln!(writer, "{}", serialized).expect("Unable to write data");
+        let serialized = serde_json::to_string(&node).context("Failed to serialize FileNode")?;
+        writeln!(writer, "{}", serialized).context("Unable to write data")?;
     }
     for relation in relation_list.file_relations {
         let serialized =
-            serde_json::to_string(&relation).expect("Failed to serialize FileRelation");
-        writeln!(writer, "{}", serialized).expect("Unable to write data");
+            serde_json::to_string(&relation).context("Failed to serialize FileRelation")?;
+        writeln!(writer, "{}", serialized).context("Unable to write data")?;
     }
     for node in relation_list.symbol_nodes {
-        let serialized = serde_json::to_string(&node).expect("Failed to serialize SymbolNode");
-        writeln!(writer, "{}", serialized).expect("Unable to write data");
+        let serialized = serde_json::to_string(&node).context("Failed to serialize SymbolNode")?;
+        writeln!(writer, "{}", serialized).context("Unable to write data")?;
     }
+    Ok(())
 }
 
-fn handle_relation(relation_cmd: RelationCommand) {
+fn handle_relation(relation_cmd: RelationCommand) -> anyhow::Result<()> {
     let mut config = GraphConfig::default();
     config.project_path = relation_cmd.common_options.project_path.clone();
     if relation_cmd.common_options.strict {
         config.def_limit = 1;
     }
-    if relation_cmd.common_options.def_limit.is_some() {
-        config.def_limit = relation_cmd.common_options.def_limit.unwrap();
+    if let Some(def_limit) = relation_cmd.common_options.def_limit {
+        config.def_limit = def_limit;
     }
 
     if let Some(depth) = relation_cmd.common_options.depth {
@@ -320,7 +324,7 @@ fn handle_relation(relation_cmd: RelationCommand) {
         config.symbol_len_limit = symbol_len_limit;
     }
 
-    let g = Graph::from(config).expect("Failed to create graph");
+    let g = Graph::from(config).context("Failed to create graph")?;
 
     let mut files: Vec<String> = g.files().into_iter().collect();
     files.sort();
@@ -329,28 +333,26 @@ fn handle_relation(relation_cmd: RelationCommand) {
     let wtr_result = Writer::from_path(relation_cmd.csv);
     let mut wtr = match wtr_result {
         Ok(writer) => writer,
-        Err(e) => panic!("Failed to create CSV writer: {}", e),
+        Err(e) => anyhow::bail!("Failed to create CSV writer: {}", e),
     };
     // Write the header row
     let mut header = vec!["".to_string()];
     header.extend(files.clone());
-    if let Err(e) = wtr.write_record(&header) {
-        panic!("Failed to write CSV header: {}", e);
-    }
+    wtr.write_record(&header).context("Failed to write CSV header")?;
 
     let mut symbol_wtr_opts = None;
     if !relation_cmd.symbol_csv.is_empty() {
         let symbol_wtr_result = Writer::from_path(relation_cmd.symbol_csv);
         symbol_wtr_opts = match symbol_wtr_result {
             Ok(writer) => Some(writer),
-            Err(e) => panic!("Failed to create CSV writer: {}", e),
+            Err(e) => anyhow::bail!("Failed to create CSV writer: {}", e),
         };
         let mut header = vec!["".to_string()];
         header.extend(files.clone());
         if let Some(symbol_wtr) = symbol_wtr_opts.as_mut() {
             symbol_wtr
                 .write_record(&header)
-                .expect("Failed to write header to symbol_wtr");
+                .context("Failed to write header to symbol_wtr")?;
         }
     }
 
@@ -402,34 +404,33 @@ fn handle_relation(relation_cmd: RelationCommand) {
         .collect();
 
     for (row, pair_row) in sorted_results {
-        wtr.write_record(&row).expect("Failed to write record");
+        wtr.write_record(&row).context("Failed to write record")?;
         if let Some(symbol_wtr) = symbol_wtr_opts.as_mut() {
             symbol_wtr
                 .write_record(&pair_row)
-                .expect("Failed to write pair_row to symbol_wtr");
+                .context("Failed to write pair_row to symbol_wtr")?;
         }
     }
 
     // Flush the writer to ensure all data is written
-    if let Err(e) = wtr.flush() {
-        panic!("Failed to flush CSV writer: {}", e);
-    }
+    wtr.flush().context("Failed to flush CSV writer")?;
+    Ok(())
 }
 
-fn handle_interactive(interactive_cmd: InteractiveCommand) {
+fn handle_interactive(interactive_cmd: InteractiveCommand) -> anyhow::Result<()> {
     let mut config = GraphConfig::default();
     config.project_path = interactive_cmd.common_options.project_path.clone();
     if interactive_cmd.common_options.strict {
         config.def_limit = 1
     }
-    if !interactive_cmd.common_options.depth.is_none() {
-        config.depth = interactive_cmd.common_options.depth.unwrap();
+    if let Some(depth) = interactive_cmd.common_options.depth {
+        config.depth = depth;
     }
 
-    let g = Graph::from(config).expect("Failed to create graph");
+    let g = Graph::from(config).context("Failed to create graph")?;
 
     if interactive_cmd.dry {
-        return;
+        return Ok(());
     }
 
     loop {
@@ -447,6 +448,7 @@ fn handle_interactive(interactive_cmd: InteractiveCommand) {
             Err(_) => break,
         }
     }
+    Ok(())
 }
 
 #[derive(Serialize, Deserialize)]
@@ -455,45 +457,51 @@ struct RelatedFileWrapper {
     pub related: Vec<RelatedFileContext>,
 }
 
-fn handle_server(server_cmd: ServerCommand) {
+#[derive(Serialize, Deserialize)]
+struct DiffFileContext {
+    pub name: String,
+    pub added: Vec<RelatedFileContext>,
+    pub deleted: Vec<RelatedFileContext>,
+    pub modified: Vec<RelatedFileContext>,
+}
+
+fn handle_server(server_cmd: ServerCommand) -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
     let mut config = GraphConfig::default();
     config.project_path = server_cmd.common_options.project_path.clone();
     if server_cmd.common_options.strict {
         config.def_limit = 1
     }
-    if !server_cmd.common_options.depth.is_none() {
-        config.depth = server_cmd.common_options.depth.unwrap();
+    if let Some(depth) = server_cmd.common_options.depth {
+        config.depth = depth;
     }
 
-    let g = Graph::from(config).expect("Failed to create graph");
+    let g = Graph::from(config).context("Failed to create graph")?;
 
     let mut server_config = ServerConfig::new(g);
-    server_config.port = server_cmd.port.clone();
+    server_config.port = server_cmd.port;
     info!("server up, port: {}", server_config.port);
     server_main(server_config);
+    Ok(())
 }
 
-fn handle_obsidian(obsidian_cmd: ObsidianCommand) {
+fn handle_obsidian(obsidian_cmd: ObsidianCommand) -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
     let mut config = GraphConfig::default();
     config.project_path = obsidian_cmd.common_options.project_path.clone();
     if obsidian_cmd.common_options.strict {
         config.def_limit = 1
     }
-    if !obsidian_cmd.common_options.depth.is_none() {
-        config.depth = obsidian_cmd.common_options.depth.unwrap();
+    if let Some(depth) = obsidian_cmd.common_options.depth {
+        config.depth = depth;
     }
 
-    let g = Graph::from(config).expect("Failed to create graph");
+    let g = Graph::from(config).context("Failed to create graph")?;
 
     // create mirror files
     // add links to files
     let files = g.files();
-    match fs::create_dir(&obsidian_cmd.vault_dir) {
-        Ok(_) => debug!("Directory created successfully."),
-        Err(e) => panic!("Error creating directory: {}", e),
-    }
+    fs::create_dir(&obsidian_cmd.vault_dir).context("Failed to create vault directory")?;
 
     for each_file in files {
         let related = g.related_files(each_file.clone());
@@ -505,58 +513,21 @@ fn handle_obsidian(obsidian_cmd: ObsidianCommand) {
 
         let path = Path::new(&markdown_filename);
         let parent = path.parent().unwrap_or_else(|| Path::new("."));
-        if let Err(why) = fs::create_dir_all(parent) {
-            panic!("couldn't create directory {}: {}", parent.display(), why);
-        }
-        let mut file = match File::create(&markdown_filename) {
-            Err(why) => panic!("couldn't create {}: {}", markdown_filename, why),
-            Ok(file) => file,
-        };
-        match file.write_all(markdown_content.as_bytes()) {
-            Err(why) => panic!("couldn't write to {}: {}", markdown_filename, why),
-            Ok(_) => debug!("Successfully wrote to {}", markdown_filename),
-        }
+        fs::create_dir_all(parent).context("Failed to create parent directory")?;
+        let mut file = File::create(&markdown_filename).context("Failed to create markdown file")?;
+        file.write_all(markdown_content.as_bytes()).context("Failed to write to markdown file")?;
+        debug!("Successfully wrote to {}", markdown_filename);
     }
-}
-#[derive(Serialize, Deserialize)]
-struct DiffFileContext {
-    // same as git
-    name: String,
-    added: Vec<RelatedFileContext>,
-    deleted: Vec<RelatedFileContext>,
-    modified: Vec<RelatedFileContext>,
+    Ok(())
 }
 
-fn get_commit_and_object<'repo>(
-    repo: &'repo Repository,
-    rev: &str,
-) -> Result<(Commit<'repo>, Object<'repo>), Error> {
-    let obj = repo.revparse_single(rev)?;
-
-    // Check if the object is a commit or needs to be peeled to a commit
-    let commit = if obj.kind() == Some(ObjectType::Commit) {
-        obj.as_commit()
-            .map(|commit| (commit.clone(), obj.clone()))
-            .ok_or_else(|| Error::from_str("Object is not a commit"))
-    } else {
-        let peeled_obj = obj.peel(ObjectType::Commit)?;
-        peeled_obj
-            .as_commit()
-            .map(|commit| (commit.clone(), peeled_obj.clone()))
-            .ok_or_else(|| Error::from_str("Object could not be peeled to commit"))
-    };
-
-    commit
-}
-
-fn handle_diff(diff_cmd: DiffCommand) {
+fn handle_diff(diff_cmd: DiffCommand) -> anyhow::Result<()> {
     // repo status check
     let project_path = diff_cmd.common_options.project_path;
-    let repo = Repository::open(&project_path).unwrap();
-    // we don't need to check dirty status anymore because we don't checkout
+    let repo = Repository::open(&project_path).context("Failed to open repository")?;
     
-    let (target_commit, _target_object) = get_commit_and_object(&repo, &diff_cmd.target).unwrap();
-    let (source_commit, _source_object) = get_commit_and_object(&repo, &diff_cmd.source).unwrap();
+    let (target_commit, _target_object) = get_commit_and_object(&repo, &diff_cmd.target).context("Failed to get target commit")?;
+    let (source_commit, _source_object) = get_commit_and_object(&repo, &diff_cmd.source).context("Failed to get source commit")?;
 
     // gen graphs
     let mut config = GraphConfig::default();
@@ -564,27 +535,27 @@ fn handle_diff(diff_cmd: DiffCommand) {
     if diff_cmd.common_options.strict {
         config.def_limit = 1
     }
-    if !diff_cmd.common_options.depth.is_none() {
-        config.depth = diff_cmd.common_options.depth.unwrap();
+    if let Some(depth) = diff_cmd.common_options.depth {
+        config.depth = depth;
     }
 
     let mut target_config = config.clone();
     target_config.commit_id = Some(target_commit.id().to_string());
-    let target_graph = Graph::from(target_config).expect("Failed to create target graph");
+    let target_graph = Graph::from(target_config).context("Failed to create target graph")?;
 
     let mut source_config = config.clone();
     source_config.commit_id = Some(source_commit.id().to_string());
-    let source_graph = Graph::from(source_config).expect("Failed to create source graph");
+    let source_graph = Graph::from(source_config).context("Failed to create source graph")?;
 
     // diff files
     let mut diff_options = DiffOptions::new();
     let diff = repo
         .diff_tree_to_tree(
-            Some(&target_commit.tree().unwrap()),
-            Some(&source_commit.tree().unwrap()),
+            Some(&target_commit.tree().context("Target commit tree missing")?),
+            Some(&source_commit.tree().context("Source commit tree missing")?),
             Some(&mut diff_options),
         )
-        .unwrap();
+        .context("Diff failed")?;
 
     let mut diff_files: Vec<String> = Vec::new();
     diff.foreach(
@@ -598,7 +569,7 @@ fn handle_diff(diff_cmd: DiffCommand) {
         None,
         None,
     )
-    .unwrap();
+    .context("Diff traversal failed")?;
 
     // diff context
     let mut ret: Vec<DiffFileContext> = Vec::new();
@@ -606,12 +577,12 @@ fn handle_diff(diff_cmd: DiffCommand) {
         let target_related_map: HashMap<String, RelatedFileContext> = target_graph
             .related_files(each_file.clone())
             .into_iter()
-            .map(|item| return (item.name.clone(), item))
+            .map(|item| (item.name.clone(), item))
             .collect();
         let source_related_map: HashMap<String, RelatedFileContext> = source_graph
             .related_files(each_file.clone())
             .into_iter()
-            .map(|item| return (item.name.clone(), item))
+            .map(|item| (item.name.clone(), item))
             .collect();
         let mut added_links: Vec<RelatedFileContext> = Vec::new();
         let mut modified_links: Vec<RelatedFileContext> = Vec::new();
@@ -665,6 +636,29 @@ fn handle_diff(diff_cmd: DiffCommand) {
             println!("{}", file_node)
         }
     }
+    Ok(())
+}
+
+fn get_commit_and_object<'repo>(
+    repo: &'repo Repository,
+    rev: &str,
+) -> Result<(Commit<'repo>, Object<'repo>), Error> {
+    let obj = repo.revparse_single(rev)?;
+
+    // Check if the object is a commit or needs to be peeled to a commit
+    let commit = if obj.kind() == Some(ObjectType::Commit) {
+        obj.as_commit()
+            .map(|commit| (commit.clone(), obj.clone()))
+            .ok_or_else(|| Error::from_str("Object is not a commit"))
+    } else {
+        let peeled_obj = obj.peel(ObjectType::Commit)?;
+        peeled_obj
+            .as_commit()
+            .map(|commit| (commit.clone(), peeled_obj.clone()))
+            .ok_or_else(|| Error::from_str("Object could not be peeled to commit"))
+    };
+
+    commit
 }
 
 #[test]
@@ -676,7 +670,7 @@ fn test_handle_relate() {
         json: None,
         ignore_zero: true,
     };
-    handle_relate(relate_cmd);
+    handle_relate(relate_cmd).unwrap();
 }
 
 #[test]
@@ -688,7 +682,7 @@ fn test_handle_relate_files() {
         json: None,
         ignore_zero: true,
     };
-    handle_relate(relate_cmd);
+    handle_relate(relate_cmd).unwrap();
 }
 
 #[test]
@@ -700,7 +694,7 @@ fn test_handle_relate_files_strict() {
         json: None,
         ignore_zero: true,
     };
-    handle_relate(relate_cmd);
+    handle_relate(relate_cmd).unwrap();
 }
 
 #[test]
@@ -713,7 +707,7 @@ fn test_handle_relate_file_txt() {
         json: None,
         ignore_zero: true,
     };
-    handle_relate(relate_cmd);
+    handle_relate(relate_cmd).unwrap();
 }
 
 #[test]
@@ -722,7 +716,7 @@ fn server_test() {
     handle_server(ServerCommand {
         common_options: CommonOptions::default(),
         port: 9411,
-    })
+    }).unwrap();
 }
 
 #[test]
@@ -731,7 +725,7 @@ fn obsidian_test() {
     handle_obsidian(ObsidianCommand {
         common_options: CommonOptions::default(),
         vault_dir: "./vault".to_string(),
-    })
+    }).unwrap();
 }
 
 #[test]
@@ -741,14 +735,14 @@ fn diff_test() {
         target: "HEAD~10".to_string(),
         source: "HEAD".to_string(),
         json: false,
-    });
+    }).unwrap();
 
     handle_diff(DiffCommand {
         common_options: CommonOptions::default(),
         target: "d18a5db39752d244664a23f74e174448b66b5b7e".to_string(),
         source: "HEAD".to_string(),
         json: false,
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -761,7 +755,7 @@ fn relation_test() {
         csv: "ok.csv".to_string(),
         symbol_csv: "ok1.csv".to_string(),
         index_file: "".to_string(),
-    })
+    }).unwrap();
 }
 
 #[test]
@@ -774,5 +768,5 @@ fn relation_v2_test() {
         csv: "".to_string(),
         symbol_csv: "".to_string(),
         index_file: "hello.index".to_string(),
-    })
+    }).unwrap();
 }

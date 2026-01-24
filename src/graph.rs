@@ -170,16 +170,46 @@ impl Graph {
                         .and_then(|head| head.peel_to_commit().ok())?
                 };
 
-                let tree = commit.tree().ok()?;
-                let tree_entry = tree.get_path(Path::new(&file_path)).ok()?;
-                let object = tree_entry.to_object(&repo).ok()?;
-                let blob = object.peel_to_blob().ok()?;
+                let tree = match commit.tree() {
+                    Ok(t) => t,
+                    Err(e) => {
+                        debug!("Failed to get tree: {}", e);
+                        return None;
+                    }
+                };
+                let tree_entry = match tree.get_path(Path::new(&file_path)) {
+                    Ok(entry) => entry,
+                    Err(e) => {
+                        debug!("Failed to get tree entry for {}: {}", file_path, e);
+                        return None;
+                    }
+                };
+                let object = match tree_entry.to_object(&repo) {
+                    Ok(obj) => obj,
+                    Err(e) => {
+                        debug!("Failed to get object for {}: {}", file_path, e);
+                        return None;
+                    }
+                };
+                let blob = match object.peel_to_blob() {
+                    Ok(blob) => blob,
+                    Err(e) => {
+                        debug!("Failed to peel blob for {}: {}", file_path, e);
+                        return None;
+                    }
+                };
 
                 if blob.is_binary() {
                     return None;
                 }
 
-                let content = std::str::from_utf8(blob.content()).ok()?.to_string();
+                let content = match std::str::from_utf8(blob.content()) {
+                    Ok(c) => c.to_string(),
+                    Err(e) => {
+                        debug!("Invalid UTF-8 content in {}: {}", file_path, e);
+                        return None;
+                    }
+                };
                 Graph::extract_file_context(Arc::new(file_path), &content, symbol_limit)
             })
             .filter(|ctx| ctx.symbols.len() < symbol_limit)
@@ -192,12 +222,12 @@ impl Graph {
     fn build_global_symbol_table(
         file_contexts: &[FileContext],
     ) -> (
-        HashMap<String, Vec<Symbol>>,
-        HashMap<String, Vec<Symbol>>,
-        HashMap<String, Vec<Symbol>>,
+        HashMap<Arc<String>, Vec<Symbol>>,
+        HashMap<Arc<String>, Vec<Symbol>>,
+        HashMap<Arc<String>, Vec<Symbol>>,
     ) {
-        let mut global_def_symbol_table: HashMap<String, Vec<Symbol>> = HashMap::new();
-        let mut global_ref_symbol_table: HashMap<String, Vec<Symbol>> = HashMap::new();
+        let mut global_def_symbol_table: HashMap<Arc<String>, Vec<Symbol>> = HashMap::new();
+        let mut global_ref_symbol_table: HashMap<Arc<String>, Vec<Symbol>> = HashMap::new();
 
         file_contexts
             .iter()
@@ -206,13 +236,13 @@ impl Graph {
                 match symbol.kind {
                     SymbolKind::DEF => {
                         global_def_symbol_table
-                            .entry(symbol.name.as_ref().clone())
+                            .entry(symbol.name.clone())
                             .or_insert_with(Vec::new)
                             .push(symbol.clone());
                     }
                     SymbolKind::REF => {
                         global_ref_symbol_table
-                            .entry(symbol.name.as_ref().clone())
+                            .entry(symbol.name.clone())
                             .or_insert_with(Vec::new)
                             .push(symbol.clone());
                     }
@@ -236,8 +266,8 @@ impl Graph {
 
     fn filter_pointless_symbols(
         mut file_contexts: Vec<FileContext>,
-        global_def_symbol_table: &HashMap<String, Vec<Symbol>>,
-        global_ref_symbol_table: &HashMap<String, Vec<Symbol>>,
+        global_def_symbol_table: &HashMap<Arc<String>, Vec<Symbol>>,
+        global_ref_symbol_table: &HashMap<Arc<String>, Vec<Symbol>>,
         symbol_len_limit: usize,
     ) -> Vec<FileContext> {
         for file_context in &mut file_contexts {
@@ -246,8 +276,8 @@ impl Graph {
                     return false;
                 }
                 match symbol.kind {
-                    SymbolKind::DEF => global_ref_symbol_table.contains_key(symbol.name.as_ref()),
-                    SymbolKind::REF => global_def_symbol_table.contains_key(symbol.name.as_ref()),
+                    SymbolKind::DEF => global_ref_symbol_table.contains_key(&symbol.name),
+                    SymbolKind::REF => global_def_symbol_table.contains_key(&symbol.name),
                     SymbolKind::NAMESPACE => true,
                 }
             });
@@ -367,7 +397,7 @@ impl Graph {
                     continue;
                 }
 
-                let defs = match global_def_table.get(symbol.name.as_ref()) {
+                let defs = match global_def_table.get(&symbol.name) {
                     Some(defs) => defs,
                     None => continue,
                 };
@@ -432,9 +462,9 @@ impl Graph {
                 }
                 
                 if symbol_graph.list_references_by_definition(&each_def.id()).is_empty() {
-                    if let Some(fallback_defs) = global_unique_def_table.get(each_def.name.as_ref()) {
+                    if let Some(fallback_defs) = global_unique_def_table.get(&each_def.name) {
                         for fallback_def in fallback_defs {
-                            if let Some(refs) = global_ref_table.get(each_def.name.as_ref()) {
+                            if let Some(refs) = global_ref_table.get(&each_def.name) {
                                 for r in refs {
                                     symbol_graph.link_symbol_to_symbol(fallback_def, r);
                                 }
