@@ -303,21 +303,27 @@ impl Graph {
         HashMap<Arc<String>, Vec<Symbol>>,
         HashMap<Arc<String>, Vec<Symbol>>,
         HashMap<Arc<String>, Vec<Symbol>>,
+        HashMap<Arc<String>, f64>, // New: DEF name -> IDF score
     ) {
         let mut global_def_symbol_table: HashMap<Arc<String>, Vec<Symbol>> = HashMap::new();
         let mut global_ref_symbol_table: HashMap<Arc<String>, Vec<Symbol>> = HashMap::new();
         let mut global_imp_symbol_table: HashMap<Arc<String>, Vec<Symbol>> = HashMap::new();
+        let mut def_file_distribution: HashMap<Arc<String>, HashSet<Arc<String>>> = HashMap::new();
 
-        file_contexts
-            .iter()
-            .flat_map(|file_context| file_context.symbols.iter())
-            .for_each(|symbol| {
+        let total_files = file_contexts.len() as f64;
+
+        file_contexts.iter().for_each(|file_context| {
+            file_context.symbols.iter().for_each(|symbol| {
                 match symbol.kind {
                     SymbolKind::DEF => {
                         global_def_symbol_table
                             .entry(symbol.name.clone())
                             .or_insert_with(Vec::new)
                             .push(symbol.clone());
+                        def_file_distribution
+                            .entry(symbol.name.clone())
+                            .or_insert_with(HashSet::new)
+                            .insert(file_context.path.clone());
                     }
                     SymbolKind::REF => {
                         global_ref_symbol_table
@@ -334,6 +340,7 @@ impl Graph {
                     SymbolKind::NAMESPACE => {}
                 }
             });
+        });
 
         let global_unique_def_symbol_table: HashMap<_, _> = global_def_symbol_table
             .iter()
@@ -341,11 +348,21 @@ impl Graph {
             .map(|(name, symbols)| (name.clone(), symbols.clone()))
             .collect();
 
+        let def_idfs = def_file_distribution
+            .into_iter()
+            .map(|(name, files)| {
+                // IDF = ln(Total Files / (Files defining it + 1)) + 1.0
+                let idf = (total_files / (files.len() as f64)).ln() + 1.0;
+                (name, idf)
+            })
+            .collect();
+
         (
             global_def_symbol_table,
             global_ref_symbol_table,
             global_unique_def_symbol_table,
             global_imp_symbol_table,
+            def_idfs,
         )
     }
 
@@ -425,7 +442,7 @@ impl Graph {
         info!("symbol extract finished, files: {}", file_contexts.len());
 
         // 4. Build global tables and filter pointless symbols
-        let (global_def_table, global_ref_table, global_unique_def_table, _global_imp_table) =
+        let (global_def_table, global_ref_table, global_unique_def_table, _global_imp_table, def_idfs) =
             Self::build_global_symbol_table(&file_contexts);
         let final_file_contexts = Self::filter_pointless_symbols(
             file_contexts,
@@ -529,80 +546,92 @@ impl Graph {
 
                 let mut ratio_map: BTreeMap<usize, Vec<&Symbol>> = BTreeMap::new();
                 for (def, _is_exact_match) in potential_defs {
-                    // Check if there is an explicit import bridge or same package
+                    // 1. Symbol Specificity (IDF)
+                    let idf = *def_idfs.get(&def.name).unwrap_or(&1.0);
+
+                    // 2. Physical Evidence
                     let is_explicitly_imported = explicit_imports.iter().any(|imp| {
                         is_file_matches_import(def.file.as_ref(), imp, file_context.path.as_ref())
                     });
                     let same_pkg = is_same_package(def.file.as_ref(), file_context.path.as_ref());
                     let has_physical_link = is_explicitly_imported || same_pkg;
 
+                    // 3. Logical Evidence (Jaccard Similarity based on Commits)
                     let ref_related_commits = get_file_valid_commits(def.file.as_ref());
-                    let commit_intersection_count = def_related_commits
+                    let intersection_count = def_related_commits
                         .iter()
                         .filter(|c| ref_related_commits.contains(*c))
                         .count();
 
-                    // Precision Filter: 
-                    let is_qualified = symbol.name.contains('.') || def.name.contains('.');
-                    
+                    let union_count = def_related_commits.len() + ref_related_commits.len() - intersection_count;
+                    let jaccard = if union_count > 0 {
+                        intersection_count as f64 / union_count as f64
+                    } else {
+                        0.0
+                    };
+
+                    // 4. Adaptive Filtering (Collision Mitigation)
+                    // We use (IDF * Jaccard) as a confidence measure.
+                    // If it's a common symbol (low IDF) and has weak logical coupling, skip.
                     if !has_physical_link {
-                        if !is_qualified && commit_intersection_count < 3 {
-                            continue;
-                        }
-                        if is_qualified && commit_intersection_count < 1 {
+                        let confidence = idf * jaccard;
+                        // This threshold is more adaptive than a hardcoded "count < 3"
+                        if confidence < 0.1 {
                             continue;
                         }
                     }
 
-                    if commit_intersection_count > 0 || has_physical_link {
-                        // Calc ratio (score) based on intersection
-                        let mut score = 0.0;
-                        
-                        // Explicit evidence gets a massive boost
-                        if has_physical_link {
-                            score += 100.0;
-                            if is_explicitly_imported {
-                                score += 50.0; // Higher priority for explicit imports
-                            }
-                        }
+                    // 5. Scoring
+                    // Use a combination of IDF and Jaccard for the base score
+                    let mut score = idf * jaccard * 10.0;
 
-                        // For each common commit, give more weight if the commit is "small"
-                        for common_commit in def_related_commits.iter().filter(|c| ref_related_commits.contains(*c)) {
-                            let touched_files_count = relation_graph.commit_related_files(common_commit).unwrap_or_default().len();
-                            score += (file_len as f64 - touched_files_count as f64) / (file_len as f64);
+                    // Physical evidence still gives a strong signal
+                    if has_physical_link {
+                        score += 100.0;
+                        if is_explicitly_imported {
+                            score += 50.0;
                         }
-
-                        // Adjust score by file complexity
-                        let ref_count_in_file = get_symbol_count(&def.file, &symbol_graph);
-                        if ref_count_in_file > 0 {
-                            score /= ref_count_in_file as f64;
-                        }
-                        
-                        // Confidence Threshold Filter
-                        if score < conf.min_score {
-                            continue;
-                        }
-
-                        ratio_map
-                            .entry(score as usize)
-                            .or_insert_with(Vec::new)
-                            .push(def);
                     }
+
+                    // Adjust score by file complexity (optional but kept for compatibility)
+                    let ref_count_in_file = get_symbol_count(&def.file, &symbol_graph);
+                    if ref_count_in_file > 0 {
+                        score /= (ref_count_in_file as f64).sqrt(); // Use sqrt to dampen the effect
+                    }
+
+                    if score < conf.min_score {
+                        continue;
+                    }
+
+                    ratio_map
+                        .entry(score as usize)
+                        .or_insert_with(Vec::new)
+                        .push(def);
                 }
 
-                let mut def_count = 0;
-                for (&ratio, defs) in ratio_map.iter().rev() {
-                    for def in defs {
-                        symbol_graph.link_symbol_to_symbol(&symbol, &def);
-                        symbol_graph.enhance_symbol_to_symbol(&symbol.id(), &def.id(), ratio);
+                if let Some(&max_score) = ratio_map.keys().last() {
+                    let mut def_count = 0;
+                    // Score Gap Pruning: only keep definitions that are close to the top match
+                    // This avoids linking to random files that happen to have the same symbol name
+                    // but much lower logical coupling.
+                    let threshold = (max_score as f64 * 0.8) as usize;
 
-                        def_count += 1;
+                    for (&ratio, defs) in ratio_map.iter().rev() {
+                        if ratio < threshold {
+                            break;
+                        }
+                        for def in defs {
+                            symbol_graph.link_symbol_to_symbol(&symbol, &def);
+                            symbol_graph.enhance_symbol_to_symbol(&symbol.id(), &def.id(), ratio);
+
+                            def_count += 1;
+                            if def_count >= conf.def_limit {
+                                break;
+                            }
+                        }
                         if def_count >= conf.def_limit {
                             break;
                         }
-                    }
-                    if def_count >= conf.def_limit {
-                        break;
                     }
                 }
             }
@@ -724,6 +753,10 @@ pub struct GraphConfig {
     #[pyo3(get, set)]
     pub min_score: f64,
 
+    // If a symbol name is defined in more than `max_def_ratio` files, it will be treated as noise.
+    #[pyo3(get, set)]
+    pub max_def_ratio: f32,
+
     #[pyo3(get, set)]
     pub enable_cache: bool,
 }
@@ -745,6 +778,7 @@ impl GraphConfig {
             issue_regex: None,
             commit_id: None,
             min_score: 0.01,
+            max_def_ratio: 0.1,
             enable_cache: true,
         }
     }
@@ -926,7 +960,7 @@ mod tests {
             },
         ];
 
-        let (global_def, global_ref, _, _) = Graph::build_global_symbol_table(&contexts);
+        let (global_def, global_ref, _, _, _) = Graph::build_global_symbol_table(&contexts);
         let filtered = Graph::filter_pointless_symbols(contexts, &global_def, &global_ref, 0);
 
         let symbols_a = &filtered[0].symbols;
@@ -965,7 +999,7 @@ mod tests {
         ];
 
         // Build global symbol table
-        let (global_def, _, _, _) = Graph::build_global_symbol_table(&contexts);
+        let (global_def, _, _, _, _) = Graph::build_global_symbol_table(&contexts);
         
         // Core verification: ref_data ("DataService.validate") tries to find definition
         // It should NOT find it because it doesn't match def_auth ("AuthService.validate")

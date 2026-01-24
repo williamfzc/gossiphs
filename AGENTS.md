@@ -16,6 +16,9 @@ This document summarizes the core principles and development habits established 
 - **Collision Mitigation**: To prevent "Simple Name Collisions" (e.g., `New`, `init`), enforce strict filters:
     - Non-qualified names require a physical link or high commit intersection (>= 3).
     - Qualified names require at least 1 common commit.
+- **Dynamic Specificity Filtering (IDF)**: Use Inverse Document Frequency to weight symbols. Rare symbols (high IDF) contribute more to the score than common ones (low IDF, e.g., `init`).
+- **Adaptive Collision Mitigation**: Instead of hard counts, use `Confidence = IDF * JaccardSimilarity`. Links with low confidence are pruned unless backed by physical evidence.
+- **Score-Gap Pruning**: When multiple definitions match a reference, only keep those within 80% of the top score. This prevents "ambiguous" links from polluting the graph.
 
 ## 4. Evaluation Habits
 - **Full History**: Always use full Git history (`depth: 0` or large enough) for evaluation to capture long-term logical coupling.
