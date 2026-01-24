@@ -250,15 +250,14 @@ impl SymbolGraph {
     }
 
     pub fn list_symbols(&self, file_name: &Arc<String>) -> Vec<Symbol> {
-        if !self.file_mapping.contains_key(file_name) {
-            return Vec::new();
+        if let Some(file_index) = self.file_mapping.get(file_name) {
+            self.neighbor_symbols(*file_index)
+                .keys()
+                .cloned()
+                .collect()
+        } else {
+            Vec::new()
         }
-
-        let file_index = self.file_mapping.get(file_name).unwrap();
-        self.neighbor_symbols(*file_index)
-            .keys()
-            .map(|each| each.clone())
-            .collect()
     }
 
     pub fn list_definitions(&self, file_name: &Arc<String>) -> Vec<Symbol> {
@@ -276,22 +275,20 @@ impl SymbolGraph {
     }
 
     pub fn list_references_by_definition(&self, symbol_id: &String) -> HashMap<Symbol, usize> {
-        if !self.symbol_mapping.contains_key(symbol_id) {
-            return HashMap::new();
+        if let Some(def_index) = self.symbol_mapping.get(symbol_id) {
+            self.neighbor_symbols(*def_index)
+        } else {
+            HashMap::new()
         }
-
-        let def_index = self.symbol_mapping.get(symbol_id).unwrap();
-        self.neighbor_symbols(*def_index)
     }
 
     pub fn list_definitions_by_reference(&self, symbol_id: &String) -> HashMap<Symbol, usize> {
         // there are more than one possible definitions
-        if !self.symbol_mapping.contains_key(symbol_id) {
-            return HashMap::new();
+        if let Some(ref_index) = self.symbol_mapping.get(symbol_id) {
+            self.neighbor_symbols(*ref_index)
+        } else {
+            HashMap::new()
         }
-
-        let ref_index = self.symbol_mapping.get(symbol_id).unwrap();
-        self.neighbor_symbols(*ref_index)
     }
 
     pub fn pairs_between_files(&self, src_file: &Arc<String>, dst_file: &Arc<String>) -> Vec<DefRefPair> {

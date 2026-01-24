@@ -255,7 +255,7 @@ fn handle_relate(relate_cmd: RelateCommand) -> anyhow::Result<()> {
             related: files,
         });
     }
-    let json = serde_json::to_string(&related_files_data).unwrap();
+    let json = serde_json::to_string(&related_files_data).context("Failed to serialize related files data")?;
     if let Some(json_path) = relate_cmd.json {
         fs::write(json_path, json).context("Failed to write JSON output")?;
     } else {
@@ -400,7 +400,7 @@ fn handle_relation(relation_cmd: RelationCommand) -> anyhow::Result<()> {
     // Sort results by the original order of files
     let sorted_results: Vec<(Vec<String>, Vec<String>)> = files
         .iter()
-        .map(|file| results.get(file).unwrap().clone())
+        .filter_map(|file| results.get(file).cloned())
         .collect();
 
     for (row, pair_row) in sorted_results {
@@ -442,7 +442,7 @@ fn handle_interactive(interactive_cmd: InteractiveCommand) -> anyhow::Result<()>
                     name,
                     related: files,
                 })
-                .unwrap();
+                .context("Failed to serialize RelatedFileWrapper")?;
                 println!("{}", json);
             }
             Err(_) => break,
@@ -481,7 +481,7 @@ fn handle_server(server_cmd: ServerCommand) -> anyhow::Result<()> {
     let mut server_config = ServerConfig::new(g);
     server_config.port = server_cmd.port;
     info!("server up, port: {}", server_config.port);
-    server_main(server_config);
+    server_main(server_config).context("Server execution failed")?;
     Ok(())
 }
 
@@ -610,7 +610,7 @@ fn handle_diff(diff_cmd: DiffCommand) -> anyhow::Result<()> {
 
     // output format
     if diff_cmd.json {
-        let json = serde_json::to_string(&ret).unwrap();
+        let json = serde_json::to_string(&ret).context("Failed to serialize diff context")?;
         println!("{}", json);
     } else {
         for file_context in &ret {

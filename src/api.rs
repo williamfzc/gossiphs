@@ -312,7 +312,9 @@ impl Graph {
                         .filter(|s| s.symbol.kind == SymbolKind::DEF)
                         .map(|s| {
                             let symbol_id = s.symbol.id();
-                            if !symbol_map.contains_key(&symbol_id) {
+                            if let Some(existing) = symbol_map.get(&symbol_id) {
+                                return existing.id;
+                            } else {
                                 symbol_map.insert(
                                     symbol_id,
                                     SymbolNode {
@@ -324,8 +326,6 @@ impl Graph {
                                 );
                                 cur_id += 1;
                                 return cur_id - 1;
-                            } else {
-                                return symbol_map.get(&symbol_id).unwrap().id;
                             }
                         })
                         .collect::<HashSet<_>>()
