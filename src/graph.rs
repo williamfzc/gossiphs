@@ -953,11 +953,11 @@ mod tests {
             },
         ];
 
-        // 构建全局符号表
+        // Build global symbol table
         let (global_def, _, _) = Graph::build_global_symbol_table(&contexts);
         
-        // 核心验证：ref_data ("DataService.validate") 尝试寻找定义
-        // 应该找不到，因为它不匹配 def_auth ("AuthService.validate")
+        // Core verification: ref_data ("DataService.validate") tries to find definition
+        // It should NOT find it because it doesn't match def_auth ("AuthService.validate")
         assert!(!global_def.contains_key(&ref_data.name));
         assert!(global_def.contains_key(&def_auth.name));
     }

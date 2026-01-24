@@ -533,22 +533,22 @@ public class DataService {
 "#;
         let symbols = Extractor::Java.extract(Arc::new("Test.java".to_string()), &code.to_string());
         
-        // 验证 AuthService 下的 validate
+        // Verify validate under AuthService
         check_symbols(&symbols, &[
             ("AuthService.login", SymbolKind::DEF),
             ("AuthService.validate", SymbolKind::DEF),
             ("AuthService.login.validate", SymbolKind::REF),
         ]);
 
-        // 验证 DataService 下的 validate
+        // Verify validate under DataService
         check_symbols(&symbols, &[
             ("DataService.save", SymbolKind::DEF),
             ("DataService.validate", SymbolKind::DEF),
             ("DataService.save.validate", SymbolKind::REF),
         ]);
 
-        // 核心验证：AuthService.login 里的 validate 引用，其 FQN 必须带有 AuthService 前缀
-        // 而不是简单的 validate，从而避免误连到 DataService.validate
+        // Core verification: validate reference in AuthService.login must have AuthService prefix in its FQN
+        // instead of simple validate, avoiding mismatch with DataService.validate
         let login_ref = symbols.iter().find(|s| s.name.as_ref() == "AuthService.login.validate").unwrap();
         let save_ref = symbols.iter().find(|s| s.name.as_ref() == "DataService.save.validate").unwrap();
         

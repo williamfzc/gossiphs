@@ -27,7 +27,7 @@ run_bench() {
         echo "$repo_name already exists."
     fi
 
-    # 使用 python 脚本进行对比分析
+    # Run comparison analysis using python script
     python3 eval/benchmark.py "$repo_path" "$repo_name"
 }
 
