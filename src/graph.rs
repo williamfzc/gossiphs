@@ -773,4 +773,39 @@ mod tests {
         assert!(symbols_b.iter().any(|s| s.name.as_ref() == "foo"));
         assert!(!symbols_b.iter().any(|s| s.name.as_ref() == "baz"));
     }
+
+    #[test]
+    fn test_fqn_isolation_in_graph() {
+        let file_a = Arc::new("Auth.java".to_string());
+        let file_b = Arc::new("Data.java".to_string());
+        let range = tree_sitter::Range {
+            start_byte: 0,
+            end_byte: 0,
+            start_point: tree_sitter::Point { row: 0, column: 0 },
+            end_point: tree_sitter::Point { row: 0, column: 0 },
+        };
+
+        // AuthService.validate vs DataService.validate
+        let def_auth = Symbol::new_def(file_a.clone(), Arc::new("AuthService.validate".to_string()), range);
+        let ref_data = Symbol::new_ref(file_b.clone(), Arc::new("DataService.validate".to_string()), range);
+        
+        let contexts = vec![
+            FileContext {
+                path: file_a.clone(),
+                symbols: vec![def_auth.clone()],
+            },
+            FileContext {
+                path: file_b.clone(),
+                symbols: vec![ref_data.clone()],
+            },
+        ];
+
+        // 构建全局符号表
+        let (global_def, _, _) = Graph::build_global_symbol_table(&contexts);
+        
+        // 核心验证：ref_data ("DataService.validate") 尝试寻找定义
+        // 应该找不到，因为它不匹配 def_auth ("AuthService.validate")
+        assert!(!global_def.contains_key(&ref_data.name));
+        assert!(global_def.contains_key(&def_auth.name));
+    }
 }

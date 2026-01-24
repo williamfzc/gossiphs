@@ -84,6 +84,78 @@ impl Extractor {
             false
         };
 
+        let get_node_path = |node: tree_sitter::Node, name: &str| -> String {
+            let mut path = Vec::new();
+            let mut curr = node.parent();
+            while let Some(parent) = curr {
+                let mut found_name = None;
+                let mut matched_own_name = false;
+
+                // 1. Try field names - standard and reliable
+                for field_name in &["name", "identifier", "declarator"] {
+                    if let Some(name_node) = parent.child_by_field_name(field_name) {
+                        if name_node == node {
+                            matched_own_name = true;
+                            break;
+                        }
+                        if let Ok(name_str) = name_node.utf8_text(s.as_bytes()) {
+                            let n = name_str.to_string();
+                            if !n.is_empty() && n != "self" && n != "this" {
+                                found_name = Some(n);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // 2. Fallback: Check for identifier-like children in naming-related nodes
+                if !matched_own_name && found_name.is_none() {
+                    let kind = parent.kind().to_lowercase();
+                    if kind.contains("class")
+                        || kind.contains("function")
+                        || kind.contains("method")
+                        || kind.contains("namespace")
+                        || kind.contains("module")
+                        || kind.contains("interface")
+                        || kind.contains("struct")
+                        || kind.contains("enum")
+                        || kind.contains("object")
+                    {
+                        for i in 0..parent.child_count() {
+                            let child = parent.child(i).unwrap();
+                            if child == node {
+                                matched_own_name = true;
+                                break;
+                            }
+                            let child_kind = child.kind();
+                            if child_kind.contains("identifier") || child_kind == "type_identifier" {
+                                if let Ok(name_str) = child.utf8_text(s.as_bytes()) {
+                                    let n = name_str.to_string();
+                                    if !n.is_empty() && n != "self" && n != "this" {
+                                        found_name = Some(n);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !matched_own_name {
+                    if let Some(n) = found_name {
+                        // Avoid redundant path elements or adding the name itself
+                        let last_in_path = path.last().map(|s: &String| s.as_str()).unwrap_or(name);
+                        if last_in_path != n {
+                            path.push(n);
+                        }
+                    }
+                }
+                curr = parent.parent();
+            }
+            path.reverse();
+            path.join(".")
+        };
+
         // defs
         {
             let query = Query::new(language, rule.export_grammar).context("Error creating export query")?;
@@ -99,7 +171,15 @@ impl Extractor {
                         if is_blacklisted(&string) {
                             continue;
                         }
-                        let shared_name = get_shared_name(string);
+
+                        let path = get_node_path(matched_node, &string);
+                        let full_name = if path.is_empty() {
+                            string
+                        } else {
+                            format!("{}.{}", path, string)
+                        };
+
+                        let shared_name = get_shared_name(full_name);
                         let def_node = Symbol::new_def(f.clone(), shared_name, range);
                         taken.insert(def_node.id(), ());
                         ret.push(def_node);
@@ -123,7 +203,15 @@ impl Extractor {
                         if is_blacklisted(&string) {
                             continue;
                         }
-                        let shared_name = get_shared_name(string);
+
+                        let path = get_node_path(matched_node, &string);
+                        let full_name = if path.is_empty() {
+                            string
+                        } else {
+                            format!("{}.{}", path, string)
+                        };
+
+                        let shared_name = get_shared_name(full_name);
                         let ref_node = Symbol::new_ref(f.clone(), shared_name, range);
                         if taken.contains_key(&ref_node.id()) {
                             continue;
@@ -193,7 +281,7 @@ pub fn my_function(a: i32) -> i32 {
             &symbols,
             &[
                 ("my_function", SymbolKind::DEF),
-                ("other_function", SymbolKind::REF),
+                ("my_function.other_function", SymbolKind::REF),
             ],
         );
     }
@@ -211,7 +299,7 @@ export function myFunction(a: number): number {
             &symbols,
             &[
                 ("myFunction", SymbolKind::DEF),
-                ("otherFunction", SymbolKind::REF),
+                ("myFunction.otherFunction", SymbolKind::REF),
             ],
         );
     }
@@ -232,8 +320,8 @@ func MyFunction(a int) int {
             &symbols,
             &[
                 ("MyFunction", SymbolKind::DEF),
-                ("fmt", SymbolKind::REF),
-                ("Println", SymbolKind::REF),
+                ("MyFunction.fmt", SymbolKind::REF),
+                ("MyFunction.Println", SymbolKind::REF),
             ],
         );
     }
@@ -250,7 +338,7 @@ def my_function(a: int) -> int:
             &symbols,
             &[
                 ("my_function", SymbolKind::DEF),
-                ("other_function", SymbolKind::REF),
+                ("my_function.other_function", SymbolKind::REF),
             ],
         );
     }
@@ -271,8 +359,8 @@ class MyClass:
             &symbols,
             &[
                 ("MyClass", SymbolKind::DEF),
-                ("method", SymbolKind::DEF),
-                ("print", SymbolKind::REF),
+                ("MyClass.method", SymbolKind::DEF),
+                ("MyClass.method.print", SymbolKind::REF),
             ],
         );
     }
@@ -295,7 +383,7 @@ func main() {
             &symbols,
             &[
                 ("main", SymbolKind::DEF),
-                ("val", SymbolKind::REF),
+                ("main.val", SymbolKind::REF),
             ],
         );
     }
@@ -318,7 +406,7 @@ class MyClass {
             &[
                 ("myFunction", SymbolKind::DEF),
                 ("MyClass", SymbolKind::DEF),
-                ("otherFunction", SymbolKind::REF),
+                ("myFunction.otherFunction", SymbolKind::REF),
             ],
         );
     }
@@ -341,11 +429,11 @@ public class MyClass {
             &symbols,
             &[
                 ("MyClass", SymbolKind::DEF),
-                ("myField", SymbolKind::DEF),
-                ("myMethod", SymbolKind::DEF),
-                ("MyInterface", SymbolKind::DEF),
-                ("MyEnum", SymbolKind::DEF),
-                ("otherMethod", SymbolKind::REF),
+                ("MyClass.myField", SymbolKind::DEF),
+                ("MyClass.myMethod", SymbolKind::DEF),
+                ("MyClass.MyInterface", SymbolKind::DEF),
+                ("MyClass.MyEnum", SymbolKind::DEF),
+                ("MyClass.myMethod.otherMethod", SymbolKind::REF),
             ],
         );
     }
@@ -367,10 +455,10 @@ class MyClass {
             &symbols,
             &[
                 ("MyClass", SymbolKind::DEF),
-                ("myProp", SymbolKind::DEF),
-                ("myMethod", SymbolKind::DEF),
-                ("MyObject", SymbolKind::DEF),
-                ("otherMethod", SymbolKind::REF),
+                ("MyClass.myProp", SymbolKind::DEF),
+                ("MyClass.myMethod", SymbolKind::DEF),
+                ("MyClass.MyObject", SymbolKind::DEF),
+                ("MyClass.myMethod.otherMethod", SymbolKind::REF),
             ],
         );
     }
@@ -397,7 +485,7 @@ func myFunc(a: Int) -> Int {
                 ("MyProtocol", SymbolKind::DEF),
                 ("MyAlias", SymbolKind::DEF),
                 ("myFunc", SymbolKind::DEF),
-                ("otherFunc", SymbolKind::REF),
+                ("myFunc.otherFunc", SymbolKind::REF),
             ],
         );
     }
@@ -419,10 +507,72 @@ namespace MyApp {
         check_symbols(
             &symbols,
             &[
-                ("MyClass", SymbolKind::DEF),
-                ("MyMethod", SymbolKind::DEF),
-                ("OtherMethod", SymbolKind::REF),
+                ("MyApp.MyClass", SymbolKind::DEF),
+                ("MyApp.MyClass.MyMethod", SymbolKind::DEF),
+                ("MyApp.MyClass.MyMethod.OtherMethod", SymbolKind::REF),
             ],
         );
+    }
+
+    #[test]
+    fn test_scope_isolation_java() {
+        let code = r#"
+public class AuthService {
+    public void login() {
+        validate();
+    }
+    private void validate() {}
+}
+
+public class DataService {
+    public void save() {
+        validate();
+    }
+    private void validate() {}
+}
+"#;
+        let symbols = Extractor::Java.extract(Arc::new("Test.java".to_string()), &code.to_string());
+        
+        // 验证 AuthService 下的 validate
+        check_symbols(&symbols, &[
+            ("AuthService.login", SymbolKind::DEF),
+            ("AuthService.validate", SymbolKind::DEF),
+            ("AuthService.login.validate", SymbolKind::REF),
+        ]);
+
+        // 验证 DataService 下的 validate
+        check_symbols(&symbols, &[
+            ("DataService.save", SymbolKind::DEF),
+            ("DataService.validate", SymbolKind::DEF),
+            ("DataService.save.validate", SymbolKind::REF),
+        ]);
+
+        // 核心验证：AuthService.login 里的 validate 引用，其 FQN 必须带有 AuthService 前缀
+        // 而不是简单的 validate，从而避免误连到 DataService.validate
+        let login_ref = symbols.iter().find(|s| s.name.as_ref() == "AuthService.login.validate").unwrap();
+        let save_ref = symbols.iter().find(|s| s.name.as_ref() == "DataService.save.validate").unwrap();
+        
+        assert_ne!(login_ref.name, save_ref.name);
+    }
+
+    #[test]
+    fn test_nested_scope_python() {
+        let code = r#"
+class Outer:
+    class Inner:
+        def method(self):
+            helper()
+    def helper(self):
+        pass
+"#;
+        let symbols = Extractor::Python.extract(Arc::new("test.py".to_string()), &code.to_string());
+        
+        check_symbols(&symbols, &[
+            ("Outer", SymbolKind::DEF),
+            ("Outer.Inner", SymbolKind::DEF),
+            ("Outer.Inner.method", SymbolKind::DEF),
+            ("Outer.helper", SymbolKind::DEF),
+            ("Outer.Inner.method.helper", SymbolKind::REF),
+        ]);
     }
 }
