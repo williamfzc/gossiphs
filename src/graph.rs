@@ -5,6 +5,7 @@ Role: Manages the high-level Graph structure, integrating commit history and sym
 */
 use crate::extractor::Extractor;
 use crate::symbol::{Symbol, SymbolGraph, SymbolKind};
+use crate::cache::CacheManager;
 use anyhow::{Context, Result};
 use cupido::collector::config::Collect;
 use cupido::collector::config::{get_collector, Config};
@@ -144,23 +145,27 @@ impl Graph {
     }
 
     fn extract_file_contexts(
-        root: &String,
-        commit_id: Option<String>,
+        conf: &GraphConfig,
         files: Vec<String>,
-        symbol_limit: usize,
     ) -> Result<Vec<FileContext>> {
         let pb = ProgressBar::new(files.len() as u64);
+        let cache_manager = if conf.enable_cache {
+            CacheManager::new(&conf.project_path).ok()
+        } else {
+            None
+        };
+
         let file_contexts: Vec<FileContext> = files
             .into_par_iter()
             .filter_map(|file_path| {
                 pb.inc(1);
                 // Open repo in each thread to avoid Sync issues and keep it simple
-                let repo = match Repository::open(root) {
+                let repo = match Repository::open(&conf.project_path) {
                     Ok(r) => r,
                     Err(_) => return None,
                 };
 
-                let commit = if let Some(ref cid) = commit_id {
+                let commit = if let Some(ref cid) = conf.commit_id {
                     repo.revparse_single(cid)
                         .ok()
                         .and_then(|obj| obj.peel_to_commit().ok())?
@@ -203,6 +208,16 @@ impl Graph {
                     return None;
                 }
 
+                let blob_id = blob.id().to_string();
+                if let Some(ref cm) = cache_manager {
+                    if let Some(symbols) = cm.get(&file_path, &blob_id) {
+                        return Some(FileContext {
+                            path: Arc::new(file_path),
+                            symbols,
+                        });
+                    }
+                }
+
                 let content = match std::str::from_utf8(blob.content()) {
                     Ok(c) => c.to_string(),
                     Err(e) => {
@@ -210,9 +225,14 @@ impl Graph {
                         return None;
                     }
                 };
-                Graph::extract_file_context(Arc::new(file_path), &content, symbol_limit)
+                let ctx = Graph::extract_file_context(Arc::new(file_path.clone()), &content, conf.symbol_limit)?;
+                
+                if let Some(ref cm) = cache_manager {
+                    let _ = cm.set(&file_path, &blob_id, ctx.symbols.clone());
+                }
+                Some(ctx)
             })
-            .filter(|ctx| ctx.symbols.len() < symbol_limit)
+            .filter(|ctx| ctx.symbols.len() < conf.symbol_limit)
             .collect();
 
         pb.finish_and_clear();
@@ -300,9 +320,9 @@ impl Graph {
         let relation_graph = create_cupido_graph(
             &conf.project_path,
             conf.depth,
-            conf.exclude_author_regex,
-            conf.exclude_commit_regex,
-            conf.issue_regex,
+            conf.exclude_author_regex.clone(),
+            conf.exclude_commit_regex.clone(),
+            conf.issue_regex.clone(),
         )
         .context("Failed to create relation graph")?;
         info!(
@@ -320,10 +340,8 @@ impl Graph {
 
         // 3. Extract symbols from files
         let file_contexts = Self::extract_file_contexts(
-            &conf.project_path,
-            conf.commit_id.clone(),
+            &conf,
             files,
-            conf.symbol_limit,
         )?;
         info!("symbol extract finished, files: {}", file_contexts.len());
 
@@ -565,6 +583,9 @@ pub struct GraphConfig {
 
     #[pyo3(get, set)]
     pub commit_id: Option<String>,
+
+    #[pyo3(get, set)]
+    pub enable_cache: bool,
 }
 
 #[pymethods]
@@ -583,6 +604,7 @@ impl GraphConfig {
             exclude_commit_regex: None,
             issue_regex: None,
             commit_id: None,
+            enable_cache: true,
         }
     }
 }
@@ -593,6 +615,7 @@ mod tests {
     use crate::symbol::{DefRefPair, Symbol};
     use petgraph::visit::EdgeRef;
     use std::sync::Arc;
+    use std::fs;
     use tracing::{debug, info};
 
     #[test]
@@ -807,5 +830,51 @@ mod tests {
         // 应该找不到，因为它不匹配 def_auth ("AuthService.validate")
         assert!(!global_def.contains_key(&ref_data.name));
         assert!(global_def.contains_key(&def_auth.name));
+    }
+
+    #[test]
+    fn test_graph_caching_workflow() {
+        let test_dir = "./.test_graph_caching";
+        let mut config = GraphConfig::default();
+        config.project_path = ".".to_string();
+        // Use a unique project path for test if possible, but here we want to scan the current repo
+        // So we just use a unique cache directory by overriding it in the test context if we could,
+        // but currently CacheManager::new uses project_path/.gossiphs/cache.
+        // Let's create a dummy project structure for this test to be safe.
+        
+        let dummy_dir = Path::new(test_dir);
+        if dummy_dir.exists() {
+            fs::remove_dir_all(dummy_dir).unwrap();
+        }
+        fs::create_dir_all(dummy_dir).unwrap();
+        
+        // Initialize a dummy git repo
+        let repo = Repository::init(dummy_dir).unwrap();
+        let file_path = "hello.rs";
+        fs::write(dummy_dir.join(file_path), "fn hello() {}").unwrap();
+        
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new(file_path)).unwrap();
+        index.write().unwrap();
+        
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = repo.signature().unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[]).unwrap();
+
+        config.project_path = test_dir.to_string();
+        config.enable_cache = true;
+        
+        let start = Instant::now();
+        let _g1 = Graph::from(config.clone()).unwrap();
+        let first_run_duration = start.elapsed();
+        
+        let start = Instant::now();
+        let _g2 = Graph::from(config).unwrap();
+        let second_run_duration = start.elapsed();
+        
+        info!("First run: {:?}, Second run (cached): {:?}", first_run_duration, second_run_duration);
+        
+        fs::remove_dir_all(test_dir).unwrap();
     }
 }
