@@ -434,7 +434,7 @@ impl Graph {
                         // For each common commit, give more weight if the commit is "small"
                         for common_commit in def_related_commits.iter().filter(|c| ref_related_commits.contains(*c)) {
                             let touched_files_count = relation_graph.commit_related_files(common_commit).unwrap_or_default().len();
-                            score += (file_len - touched_files_count) as f64 / (file_len as f64);
+                            score += (file_len as f64 - touched_files_count as f64) / (file_len as f64);
                         }
 
                         // Adjust score by file complexity
@@ -859,7 +859,7 @@ mod tests {
         
         let tree_id = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_id).unwrap();
-        let sig = repo.signature().unwrap();
+        let sig = git2::Signature::now("test", "test@example.com").unwrap();
         repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[]).unwrap();
 
         config.project_path = test_dir.to_string();

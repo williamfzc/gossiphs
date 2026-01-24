@@ -17,8 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          fetch-depth: '0'
-          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
       - name: Cache Cargo dependencies
         uses: actions/cache@v4
         with:
@@ -73,5 +72,13 @@ jobs:
           cd ..
           
           cd lodash
+          time ../gossiphs relation
+          cd ..
+          
+          cd nowinandroid
+          time ../gossiphs relation
+          cd ..
+          
+          cd SwiftyJSON
           time ../gossiphs relation
           cd ..

@@ -230,7 +230,7 @@ fn main() -> anyhow::Result<()> {
 fn handle_relate(relate_cmd: RelateCommand) -> anyhow::Result<()> {
     // result will be saved to file, so enable log
     if relate_cmd.json.is_some() {
-        tracing_subscriber::fmt::init();
+        let _ = tracing_subscriber::fmt::try_init();
     }
     let mut config = GraphConfig::default();
     config.project_path = relate_cmd.common_options.project_path.clone();
@@ -304,6 +304,7 @@ fn handle_relation_v2(relation_cmd: RelationCommand) -> anyhow::Result<()> {
 }
 
 fn handle_relation(relation_cmd: RelationCommand) -> anyhow::Result<()> {
+    let _ = tracing_subscriber::fmt::try_init();
     let mut config = GraphConfig::default();
     config.project_path = relation_cmd.common_options.project_path.clone();
     if relation_cmd.common_options.strict {
@@ -358,37 +359,31 @@ fn handle_relation(relation_cmd: RelationCommand) -> anyhow::Result<()> {
 
     // Write each row
     let pb = ProgressBar::new(files.len() as u64);
-    let results: HashMap<String, (Vec<String>, Vec<String>)> = files
+    let results: HashMap<String, (std::collections::BTreeMap<usize, String>, std::collections::BTreeMap<usize, String>)> = files
         .par_iter()
         .map(|file| {
             pb.inc(1);
-            let mut row = vec![file.clone()];
-            let mut pair_row = vec![file.clone()];
+            let mut row = std::collections::BTreeMap::new();
+            let mut pair_row = std::collections::BTreeMap::new();
             let related_files_map: HashMap<_, _> = g
                 .related_files(file.clone())
                 .into_iter()
                 .map(|rf| (rf.name, rf.score))
                 .collect();
 
-            for related_file in &files {
+            for (i, related_file) in files.iter().enumerate() {
                 if let Some(score) = related_files_map.get(related_file) {
                     if *score > 0 {
-                        row.push(score.to_string());
+                        row.insert(i, score.to_string());
                         if symbol_wtr_opts.is_some() {
                             let pairs = g
                                 .pairs_between_files(file.clone(), related_file.clone())
                                 .iter()
                                 .map(|each| each.src_symbol.name.as_ref().clone())
                                 .collect::<Vec<String>>();
-                            pair_row.push(pairs.join("|"));
+                            pair_row.insert(i, pairs.join("|"));
                         }
-                    } else {
-                        row.push(String::new());
-                        pair_row.push(String::new());
                     }
-                } else {
-                    row.push(String::new());
-                    pair_row.push(String::new());
                 }
             }
 
@@ -398,17 +393,20 @@ fn handle_relation(relation_cmd: RelationCommand) -> anyhow::Result<()> {
     pb.finish_and_clear();
 
     // Sort results by the original order of files
-    let sorted_results: Vec<(Vec<String>, Vec<String>)> = files
-        .iter()
-        .filter_map(|file| results.get(file).cloned())
-        .collect();
-
-    for (row, pair_row) in sorted_results {
-        wtr.write_record(&row).context("Failed to write record")?;
-        if let Some(symbol_wtr) = symbol_wtr_opts.as_mut() {
-            symbol_wtr
-                .write_record(&pair_row)
-                .context("Failed to write pair_row to symbol_wtr")?;
+    for file in &files {
+        if let Some((row_map, pair_row_map)) = results.get(file) {
+            let mut row = vec![file.clone()];
+            let mut pair_row = vec![file.clone()];
+            for i in 0..files.len() {
+                row.push(row_map.get(&i).cloned().unwrap_or_default());
+                pair_row.push(pair_row_map.get(&i).cloned().unwrap_or_default());
+            }
+            wtr.write_record(&row).context("Failed to write record")?;
+            if let Some(symbol_wtr) = symbol_wtr_opts.as_mut() {
+                symbol_wtr
+                    .write_record(&pair_row)
+                    .context("Failed to write pair_row to symbol_wtr")?;
+            }
         }
     }
 
