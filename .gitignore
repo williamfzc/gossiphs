@@ -24,3 +24,15 @@ __pycache__/
 
 # Local cache
 .gossiphs/
+
+# Eval artifacts
+eval/bench_repos/
+eval/output/
+eval/output_demo/
+eval/aligned_*.json
+
+# Editor
+.trae/
+
+# Binaries
+gossiphs

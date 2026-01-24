@@ -92,7 +92,7 @@ impl Extractor {
                 let mut matched_own_name = false;
 
                 // 1. Try field names - standard and reliable
-                for field_name in &["name", "identifier", "declarator"] {
+                for field_name in &["name", "identifier", "declarator", "type", "object", "operand", "receiver", "trait"] {
                     if let Some(name_node) = parent.child_by_field_name(field_name) {
                         if name_node == node {
                             matched_own_name = true;
@@ -222,10 +222,10 @@ impl Extractor {
             }
         }
 
-        // namespace
+        // dep
         {
-            if !rule.namespace_grammar.is_empty() {
-                let query = Query::new(language, rule.namespace_grammar).context("Error creating namespace query")?;
+            if !rule.dep_grammar.is_empty() {
+                let query = Query::new(language, rule.dep_grammar).context("Error creating dep query")?;
                 let mut cursor = QueryCursor::new();
                 let matches = cursor.matches(&query, tree.root_node(), s.as_bytes());
                 for mat in matches {
@@ -233,15 +233,15 @@ impl Extractor {
                         let matched_node = capture.node;
                         let range = matched_node.range();
 
-                        let ref_node = Symbol::new_namespace(
-                            f.clone(),
-                            get_shared_name(String::from(DEFAULT_NAMESPACE_REPR)),
-                            range,
-                        );
-                        if taken.contains_key(&ref_node.id()) {
-                            continue;
+                        if let Ok(str_slice) = matched_node.utf8_text(s.as_bytes()) {
+                            let string = str_slice.to_string();
+                            // clean up quotes for interpreted strings
+                            let clean_string = string.trim_matches(|c| c == '"' || c == '\'').to_string();
+                            
+                            let shared_name = get_shared_name(clean_string);
+                            let dep_node = Symbol::new_import(f.clone(), shared_name, range);
+                            ret.push(dep_node);
                         }
-                        ret.push(ref_node);
                     }
                 }
             }

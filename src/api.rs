@@ -309,7 +309,7 @@ impl Graph {
                     let symbols: Vec<usize> = related_file
                         .related_symbols
                         .iter()
-                        .filter(|s| s.symbol.kind == SymbolKind::DEF)
+                        .filter(|s| s.symbol.kind == SymbolKind::DEF || s.symbol.kind == SymbolKind::IMPORT)
                         .map(|s| {
                             let symbol_id = s.symbol.id();
                             if let Some(existing) = symbol_map.get(&symbol_id) {

@@ -15,6 +15,9 @@ pub struct Rule {
     // which symbols has been exported from this file
     pub(crate) export_grammar: &'static str,
 
+    // explicit physical dependencies (e.g. import path strings)
+    pub(crate) dep_grammar: &'static str,
+
     // namespace control
     pub(crate) namespace_grammar: &'static str,
     pub(crate) namespace_filter_level: usize,
@@ -29,6 +32,7 @@ impl Default for Rule {
         Rule {
             import_grammar: "",
             export_grammar: "",
+            dep_grammar: "",
             namespace_grammar: "",
             namespace_filter_level: 0,
             exclude_regex: None,
@@ -62,6 +66,13 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
   function: (scoped_identifier
     name: (identifier) @exported_symbol))
 "#,
+            dep_grammar: r#"
+(use_declaration
+  argument: (scoped_identifier
+    path: (identifier) @import))
+(use_declaration
+  argument: (identifier) @import)
+"#,
             namespace_grammar: r#"
 (function_item) @body
 (generic_function) @body
@@ -86,6 +97,10 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (export_specifier (identifier) @exported_symbol)
 (lexical_declaration (variable_declarator name: (identifier) @lexical_symbol))
 "#,
+            dep_grammar: r#"
+(import_statement
+  source: (string (string_fragment) @import))
+"#,
             namespace_grammar: r#"
 (class_declaration) @body
 (function_declaration) @body
@@ -109,6 +124,10 @@ pub fn get_rule(extractor_type: &Extractor) -> Rule {
 (type_spec name: (type_identifier) @exported_symbol)
 (const_spec name: (identifier) @exported_symbol)
 (var_spec name: (identifier) @exported_symbol)
+"#,
+            dep_grammar: r#"
+(import_spec
+  path: (interpreted_string_literal) @import)
 "#,
             namespace_grammar: r#"
 (function_declaration) @body

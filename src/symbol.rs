@@ -18,6 +18,7 @@ pub enum SymbolKind {
     DEF,
     REF,
     NAMESPACE,
+    IMPORT,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -113,6 +114,15 @@ impl Symbol {
             file,
             name,
             kind: SymbolKind::NAMESPACE,
+            range: RangeWrapper::from(range),
+        }
+    }
+
+    pub fn new_import(file: Arc<String>, name: Arc<String>, range: Range) -> Symbol {
+        Symbol {
+            file,
+            name,
+            kind: SymbolKind::IMPORT,
             range: RangeWrapper::from(range),
         }
     }

@@ -48,6 +48,58 @@ impl<'a> NamespaceManager<'a> {
     }
 }
 
+fn is_file_matches_import(target_file: &str, import_str: &str, importer_file: &str) -> bool {
+    let target = target_file.replace('\\', "/");
+    let imp = import_str.replace('\\', "/").trim_matches('"').trim_matches('\'').to_string();
+    let importer = importer_file.replace('\\', "/");
+
+    // 1. Relative import (starts with . or ..)
+    if imp.starts_with('.') {
+        let importer_path = Path::new(&importer);
+        if let Some(parent) = importer_path.parent() {
+            let joined = parent.join(&imp);
+            if let Some(joined_str) = joined.to_str() {
+                let normalized = joined_str.replace('\\', "/");
+                // Remove redundant ./ or leading /
+                let clean_normalized = normalized.trim_start_matches("./");
+                if target.contains(clean_normalized) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    // 2. Package/Absolute import
+    // Check if the last part of import matches any directory part of target path
+    let target_parts: Vec<&str> = target.split('/').collect();
+    let imp_parts: Vec<&str> = imp.split('/').collect();
+
+    if let Some(&last_imp) = imp_parts.last() {
+        if !last_imp.is_empty() {
+            // For Go/Java, package name usually matches directory name
+            if target_parts.contains(&last_imp) {
+                return true;
+            }
+        }
+    }
+
+    // Fallback: if the import string is a suffix of the target's directory structure
+    // e.g. imp: "github.com/gin-gonic/gin/render", target: "render/json.go"
+    if imp.len() > 3 && (target.starts_with(&imp) || imp.contains(&target_parts[0])) {
+        if target_parts[0].len() > 2 {
+             return true;
+        }
+    }
+
+    false
+}
+
+fn is_same_package(file_a: &str, file_b: &str) -> bool {
+    let path_a = Path::new(file_a);
+    let path_b = Path::new(file_b);
+    path_a.parent() == path_b.parent()
+}
+
 #[pyclass]
 pub struct Graph {
     pub(crate) file_contexts: Vec<FileContext>,
@@ -245,9 +297,11 @@ impl Graph {
         HashMap<Arc<String>, Vec<Symbol>>,
         HashMap<Arc<String>, Vec<Symbol>>,
         HashMap<Arc<String>, Vec<Symbol>>,
+        HashMap<Arc<String>, Vec<Symbol>>,
     ) {
         let mut global_def_symbol_table: HashMap<Arc<String>, Vec<Symbol>> = HashMap::new();
         let mut global_ref_symbol_table: HashMap<Arc<String>, Vec<Symbol>> = HashMap::new();
+        let mut global_imp_symbol_table: HashMap<Arc<String>, Vec<Symbol>> = HashMap::new();
 
         file_contexts
             .iter()
@@ -266,7 +320,12 @@ impl Graph {
                             .or_insert_with(Vec::new)
                             .push(symbol.clone());
                     }
-                    // ignore
+                    SymbolKind::IMPORT => {
+                        global_imp_symbol_table
+                            .entry(symbol.name.clone())
+                            .or_insert_with(Vec::new)
+                            .push(symbol.clone());
+                    }
                     SymbolKind::NAMESPACE => {}
                 }
             });
@@ -281,6 +340,7 @@ impl Graph {
             global_def_symbol_table,
             global_ref_symbol_table,
             global_unique_def_symbol_table,
+            global_imp_symbol_table,
         )
     }
 
@@ -290,14 +350,28 @@ impl Graph {
         global_ref_symbol_table: &HashMap<Arc<String>, Vec<Symbol>>,
         symbol_len_limit: usize,
     ) -> Vec<FileContext> {
+        // Create a set of "base names" for all definitions to allow fast suffix matching
+        let global_def_base_names: HashSet<String> = global_def_symbol_table.keys()
+            .map(|k| k.split('.').last().unwrap().to_string())
+            .collect();
+
         for file_context in &mut file_contexts {
             file_context.symbols.retain(|symbol| {
                 if symbol.name.len() <= symbol_len_limit {
                     return false;
                 }
                 match symbol.kind {
-                    SymbolKind::DEF => global_ref_symbol_table.contains_key(&symbol.name),
-                    SymbolKind::REF => global_def_symbol_table.contains_key(&symbol.name),
+                    SymbolKind::DEF => global_ref_symbol_table.contains_key(&symbol.name) || 
+                                      global_ref_symbol_table.keys().any(|k| k.ends_with(&format!(".{}", symbol.name))),
+                    SymbolKind::REF => {
+                        if global_def_symbol_table.contains_key(&symbol.name) {
+                            return true;
+                        }
+                        // Try matching by base name
+                        let base_name = symbol.name.split('.').last().unwrap();
+                        global_def_base_names.contains(base_name)
+                    },
+                    SymbolKind::IMPORT => true,
                     SymbolKind::NAMESPACE => true,
                 }
             });
@@ -346,7 +420,7 @@ impl Graph {
         info!("symbol extract finished, files: {}", file_contexts.len());
 
         // 4. Build global tables and filter pointless symbols
-        let (global_def_table, global_ref_table, global_unique_def_table) =
+        let (global_def_table, global_ref_table, global_unique_def_table, _global_imp_table) =
             Self::build_global_symbol_table(&file_contexts);
         let final_file_contexts = Self::filter_pointless_symbols(
             file_contexts,
@@ -406,7 +480,14 @@ impl Graph {
         for file_context in &final_file_contexts {
             pb.inc(1);
             let def_related_commits = get_file_valid_commits(file_context.path.as_ref());
-            if def_related_commits.is_empty() {
+            
+            // Collect explicit imports for this file to boost precision
+            let explicit_imports: HashSet<String> = file_context.symbols.iter()
+                .filter(|s| s.kind == SymbolKind::IMPORT)
+                .map(|s| s.name.as_ref().clone())
+                .collect();
+
+            if def_related_commits.is_empty() && explicit_imports.is_empty() {
                 continue;
             }
 
@@ -415,22 +496,71 @@ impl Graph {
                     continue;
                 }
 
-                let defs = match global_def_table.get(&symbol.name) {
-                    Some(defs) => defs,
-                    None => continue,
-                };
+                // Collect potential definitions
+                let mut potential_defs: Vec<(&Symbol, bool)> = Vec::new();
+                if let Some(exact_defs) = global_def_table.get(&symbol.name) {
+                    for def in exact_defs {
+                        potential_defs.push((def, true));
+                    }
+                }
+                
+                // If not found or if it's a qualified name, try base name matching
+                if potential_defs.is_empty() || symbol.name.contains('.') {
+                    let base_name = symbol.name.split('.').last().unwrap();
+                    let base_name_arc = Arc::new(base_name.to_string());
+                    if let Some(base_defs) = global_def_table.get(&base_name_arc) {
+                        for def in base_defs {
+                            // avoid duplicate if exact match already added it
+                            if !potential_defs.iter().any(|(d, _)| d.id() == def.id()) {
+                                potential_defs.push((def, false));
+                            }
+                        }
+                    }
+                }
+
+                if potential_defs.is_empty() {
+                    continue;
+                }
 
                 let mut ratio_map: BTreeMap<usize, Vec<&Symbol>> = BTreeMap::new();
-                for def in defs {
+                for (def, _is_exact_match) in potential_defs {
+                    // Check if there is an explicit import bridge or same package
+                    let is_explicitly_imported = explicit_imports.iter().any(|imp| {
+                        is_file_matches_import(def.file.as_ref(), imp, file_context.path.as_ref())
+                    });
+                    let same_pkg = is_same_package(def.file.as_ref(), file_context.path.as_ref());
+                    let has_physical_link = is_explicitly_imported || same_pkg;
+
                     let ref_related_commits = get_file_valid_commits(def.file.as_ref());
                     let commit_intersection_count = def_related_commits
                         .iter()
                         .filter(|c| ref_related_commits.contains(*c))
                         .count();
 
-                    if commit_intersection_count > 0 {
+                    // Precision Filter: 
+                    let is_qualified = symbol.name.contains('.') || def.name.contains('.');
+                    
+                    if !has_physical_link {
+                        if !is_qualified && commit_intersection_count < 3 {
+                            continue;
+                        }
+                        if is_qualified && commit_intersection_count < 1 {
+                            continue;
+                        }
+                    }
+
+                    if commit_intersection_count > 0 || has_physical_link {
                         // Calc ratio (score) based on intersection
                         let mut score = 0.0;
+                        
+                        // Explicit evidence gets a massive boost
+                        if has_physical_link {
+                            score += 100.0;
+                            if is_explicitly_imported {
+                                score += 50.0; // Higher priority for explicit imports
+                            }
+                        }
+
                         // For each common commit, give more weight if the commit is "small"
                         for common_commit in def_related_commits.iter().filter(|c| ref_related_commits.contains(*c)) {
                             let touched_files_count = relation_graph.commit_related_files(common_commit).unwrap_or_default().len();
@@ -594,11 +724,11 @@ impl GraphConfig {
     pub fn default() -> GraphConfig {
         GraphConfig {
             project_path: String::from("."),
-            def_limit: 16,
+            def_limit: 12,
             commit_size_limit_ratio: 1.0,
             depth: 10240,
             symbol_limit: 4096,
-            symbol_len_limit: 0,
+            symbol_len_limit: 3,
             exclude_file_regex: String::new(),
             exclude_author_regex: None,
             exclude_commit_regex: None,
