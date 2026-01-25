@@ -86,6 +86,14 @@ struct CommonOptions {
 
     #[clap(long)]
     symbol_len_limit: Option<usize>,
+
+    /// Output-level filtering: keep at least N related files per file (0 disables filtering)
+    #[clap(long)]
+    file_min_links: Option<usize>,
+
+    /// Output-level filtering: keep at most N related files per file (0 disables filtering)
+    #[clap(long)]
+    file_max_links: Option<usize>,
 }
 
 impl CommonOptions {
@@ -99,7 +107,18 @@ impl CommonOptions {
             exclude_file_regex: None,
             exclude_author_regex: None,
             symbol_len_limit: None,
+            file_min_links: None,
+            file_max_links: None,
         }
+    }
+}
+
+fn apply_output_filter_options(config: &mut GraphConfig, opts: &CommonOptions) {
+    if let Some(n) = opts.file_min_links {
+        config.file_min_links = n;
+    }
+    if let Some(n) = opts.file_max_links {
+        config.file_max_links = n;
     }
 }
 
@@ -241,6 +260,8 @@ fn handle_relate(relate_cmd: RelateCommand) -> anyhow::Result<()> {
         config.depth = depth;
     }
 
+    apply_output_filter_options(&mut config, &relate_cmd.common_options);
+
     let g = Graph::from(config).context("Failed to create graph")?;
 
     let mut related_files_data = Vec::new();
@@ -277,10 +298,12 @@ fn handle_relation_v2(relation_cmd: RelationCommand) -> anyhow::Result<()> {
     if let Some(depth) = relation_cmd.common_options.depth {
         config.depth = depth;
     }
-    if let Some(exclude) = relation_cmd.common_options.exclude_file_regex {
-        config.exclude_file_regex = exclude;
+    if let Some(ref exclude) = relation_cmd.common_options.exclude_file_regex {
+        config.exclude_file_regex = exclude.clone();
     }
     config.exclude_author_regex = relation_cmd.common_options.exclude_author_regex.clone();
+
+    apply_output_filter_options(&mut config, &relation_cmd.common_options);
 
     let g = Graph::from(config).context("Failed to create graph")?;
     let relation_list = g.list_all_relations();
@@ -317,13 +340,15 @@ fn handle_relation(relation_cmd: RelationCommand) -> anyhow::Result<()> {
     if let Some(depth) = relation_cmd.common_options.depth {
         config.depth = depth;
     }
-    if let Some(exclude) = relation_cmd.common_options.exclude_file_regex {
-        config.exclude_file_regex = exclude;
+    if let Some(ref exclude) = relation_cmd.common_options.exclude_file_regex {
+        config.exclude_file_regex = exclude.clone();
     }
     config.exclude_author_regex = relation_cmd.common_options.exclude_author_regex.clone();
     if let Some(symbol_len_limit) = relation_cmd.common_options.symbol_len_limit {
         config.symbol_len_limit = symbol_len_limit;
     }
+
+    apply_output_filter_options(&mut config, &relation_cmd.common_options);
 
     let g = Graph::from(config).context("Failed to create graph")?;
 
@@ -425,6 +450,8 @@ fn handle_interactive(interactive_cmd: InteractiveCommand) -> anyhow::Result<()>
         config.depth = depth;
     }
 
+    apply_output_filter_options(&mut config, &interactive_cmd.common_options);
+
     let g = Graph::from(config).context("Failed to create graph")?;
 
     if interactive_cmd.dry {
@@ -474,6 +501,8 @@ fn handle_server(server_cmd: ServerCommand) -> anyhow::Result<()> {
         config.depth = depth;
     }
 
+    apply_output_filter_options(&mut config, &server_cmd.common_options);
+
     let g = Graph::from(config).context("Failed to create graph")?;
 
     let mut server_config = ServerConfig::new(g);
@@ -493,6 +522,8 @@ fn handle_obsidian(obsidian_cmd: ObsidianCommand) -> anyhow::Result<()> {
     if let Some(depth) = obsidian_cmd.common_options.depth {
         config.depth = depth;
     }
+
+    apply_output_filter_options(&mut config, &obsidian_cmd.common_options);
 
     let g = Graph::from(config).context("Failed to create graph")?;
 
@@ -521,7 +552,7 @@ fn handle_obsidian(obsidian_cmd: ObsidianCommand) -> anyhow::Result<()> {
 
 fn handle_diff(diff_cmd: DiffCommand) -> anyhow::Result<()> {
     // repo status check
-    let project_path = diff_cmd.common_options.project_path;
+    let project_path = diff_cmd.common_options.project_path.clone();
     let repo = Repository::open(&project_path).context("Failed to open repository")?;
     
     let (target_commit, _target_object) = get_commit_and_object(&repo, &diff_cmd.target).context("Failed to get target commit")?;
@@ -536,6 +567,8 @@ fn handle_diff(diff_cmd: DiffCommand) -> anyhow::Result<()> {
     if let Some(depth) = diff_cmd.common_options.depth {
         config.depth = depth;
     }
+
+    apply_output_filter_options(&mut config, &diff_cmd.common_options);
 
     let mut target_config = config.clone();
     target_config.commit_id = Some(target_commit.id().to_string());

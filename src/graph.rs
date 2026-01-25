@@ -105,6 +105,7 @@ pub struct Graph {
     pub(crate) file_contexts: Vec<FileContext>,
     pub(crate) _relation_graph: CupidoRelationGraph,
     pub(crate) symbol_graph: SymbolGraph,
+    pub(crate) config: GraphConfig,
 }
 
 impl Graph {
@@ -406,11 +407,77 @@ impl Graph {
             file_contexts: Vec::new(),
             _relation_graph: CupidoRelationGraph::new(),
             symbol_graph: SymbolGraph::new(),
+            config: GraphConfig::default(),
         }
     }
 
     pub fn from(conf: GraphConfig) -> Result<Graph> {
         let start_time = Instant::now();
+
+        // Auto cutoff for ambiguous matches.
+        // Input: unique scores in descending order.
+        // Output: the minimal score we should keep (inclusive).
+        fn knee_cutoff_score(desc_scores: &[usize]) -> usize {
+            if desc_scores.is_empty() {
+                return 0;
+            }
+            if desc_scores.len() <= 2 {
+                return *desc_scores.last().unwrap_or(&desc_scores[0]);
+            }
+
+            let top = desc_scores[0] as f64;
+            if top <= 0.0 {
+                return desc_scores[0];
+            }
+
+            let n = desc_scores.len();
+            let y_last = (desc_scores[n - 1] as f64) / top;
+
+            let mut best_i = 0usize;
+            let mut best_dist = f64::NEG_INFINITY;
+            for i in 0..n {
+                let x = i as f64 / (n as f64 - 1.0);
+                let y = (desc_scores[i] as f64) / top;
+                // distance to the line connecting (0,1) and (1,y_last)
+                let y_line = 1.0 + (y_last - 1.0) * x;
+                let dist = y_line - y;
+                if dist > best_dist {
+                    best_dist = dist;
+                    best_i = i;
+                }
+            }
+
+            desc_scores[best_i]
+        }
+
+        // A stricter cutoff based on the largest relative drop between consecutive scores.
+        // Example: [100, 95, 90, 10, 8] -> cutoff = 90.
+        fn max_drop_cutoff_score(desc_scores: &[usize]) -> usize {
+            if desc_scores.is_empty() {
+                return 0;
+            }
+            if desc_scores.len() == 1 {
+                return desc_scores[0];
+            }
+
+            let mut best_i = 1usize;
+            let mut best_drop = f64::NEG_INFINITY;
+            for i in 1..desc_scores.len() {
+                let prev = desc_scores[i - 1] as f64;
+                let cur = desc_scores[i] as f64;
+                if prev <= 0.0 {
+                    continue;
+                }
+                let drop = (prev - cur) / prev;
+                if drop > best_drop {
+                    best_drop = drop;
+                    best_i = i;
+                }
+            }
+
+            // keep up to best_i-1
+            desc_scores[best_i - 1]
+        }
 
         // 1. Building relation graph from git history
         let relation_graph = create_cupido_graph(
@@ -644,6 +711,15 @@ impl Graph {
                 if scored_defs.len() > 1 {
                     let sum: f64 = scored_defs.iter().map(|(_, s, _)| *s).sum();
                     if sum > 0.0 {
+                        // NEW: Statistical Outlier Detection (Z-Score)
+                        // If we have many candidates, calculate mean and std dev.
+                        // Only keep those that are significantly better than the average noise.
+                        let scores: Vec<f64> = scored_defs.iter().map(|(_, s, _)| *s).collect();
+                        let count = scores.len() as f64;
+                        let mean = sum / count;
+                        let variance = scores.iter().map(|s| (s - mean).powi(2)).sum::<f64>() / count;
+                        let std_dev = variance.sqrt();
+
                         let mut entropy = 0.0;
                         for &(_, s, _) in &scored_defs {
                             let p = s / sum;
@@ -653,7 +729,12 @@ impl Graph {
                         }
                         // Penalty: distributed credit. If 2 choices are equal, each gets 0.5.
                         let penalty = (-entropy).exp();
-                        for (_, s, _) in &mut scored_defs {
+                        for (_, s, has_phys) in &mut scored_defs {
+                            // If it's a weak signal (below mean + 0.5*std_dev) and not physical, 
+                            // apply extra penalty to suppress noise.
+                            if !*has_phys && count > 2.0 && *s < (mean + 0.5 * std_dev) {
+                                *s *= 0.1; 
+                            }
                             *s *= penalty;
                         }
                     }
@@ -671,15 +752,31 @@ impl Graph {
                         .push(def);
                 }
 
-                if let Some(&max_score) = ratio_map.keys().last() {
+                if let Some(&_max_score) = ratio_map.keys().last() {
                     let mut def_count = 0;
                     // Score Gap Pruning: only keep definitions that are close to the top match
-                    // This avoids linking to random files that happen to have the same symbol name
-                    // but much lower logical coupling.
-                    let threshold = (max_score as f64 * 0.8) as usize;
+                    // V2 Logic: 
+                    // 1. Always keep the Top 1.
+                    // 2. Use knee/elbow detection to decide where to cut off.
+                    // 3. Optional hard cap: top_n (0 means auto/unlimited), and def_limit.
+
+                    let unique_scores_desc: Vec<usize> = ratio_map.keys().rev().cloned().collect();
+                    // Only consider the top part of the curve: we will never keep more than def_limit anyway.
+                    let k = std::cmp::min(unique_scores_desc.len(), std::cmp::max(conf.def_limit, 2));
+                    let head = &unique_scores_desc[..k];
+                    // Combine a smooth knee detector (kneedle) with a strict max-drop detector.
+                    // Using the stricter (higher) cutoff avoids selecting a too-low elbow in long-tail distributions.
+                    let cutoff_score = std::cmp::max(knee_cutoff_score(head), max_drop_cutoff_score(head));
+
+                    let hard_cap = if conf.top_n == 0 {
+                        conf.def_limit
+                    } else {
+                        std::cmp::min(conf.top_n, conf.def_limit)
+                    };
 
                     for (&ratio, defs) in ratio_map.iter().rev() {
-                        if ratio < threshold {
+                        // Always keep Top 1; stop once we are below the knee.
+                        if def_count > 0 && ratio < cutoff_score {
                             break;
                         }
                         for def in defs {
@@ -687,11 +784,11 @@ impl Graph {
                             symbol_graph.enhance_symbol_to_symbol(&symbol.id(), &def.id(), ratio);
 
                             def_count += 1;
-                            if def_count >= conf.def_limit {
+                            if def_count >= hard_cap {
                                 break;
                             }
                         }
-                        if def_count >= conf.def_limit {
+                        if def_count >= hard_cap {
                             break;
                         }
                     }
@@ -732,6 +829,7 @@ impl Graph {
             file_contexts: final_file_contexts,
             _relation_graph: relation_graph,
             symbol_graph,
+            config: conf,
         })
     }
 }
@@ -819,6 +917,20 @@ pub struct GraphConfig {
     #[pyo3(get, set)]
     pub max_def_ratio: f32,
 
+    // NEW: top_n limit for symbol definitions
+    #[pyo3(get, set)]
+    pub top_n: usize,
+
+    // NEW: output-level filtering for file relations
+    // 0 means disable that constraint.
+    #[pyo3(get, set)]
+    pub file_min_links: usize,
+
+    // Maximum number of related files returned per file.
+    // 0 means unlimited.
+    #[pyo3(get, set)]
+    pub file_max_links: usize,
+
     #[pyo3(get, set)]
     pub enable_cache: bool,
 
@@ -836,6 +948,11 @@ impl GraphConfig {
         GraphConfig {
             project_path: String::from("."),
             def_limit: 12,
+            top_n: 0,
+            // Keep legacy behavior by default (no output-level truncation).
+            // Users can enable it to improve readability and reduce noise.
+            file_min_links: 0,
+            file_max_links: 0,
             commit_size_limit_ratio: 1.0,
             depth: 10240,
             symbol_limit: 4096,

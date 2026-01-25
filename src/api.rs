@@ -3,7 +3,7 @@ File: api.rs
 Functionality: High-level API structures and implementation for graph queries.
 Role: Defines the core data structures for file relationships and metadata, and implements methods on the Graph struct for easy data retrieval.
 */
-use crate::graph::{Graph, RelatedSymbol};
+use crate::graph::{Graph, GraphConfig, RelatedSymbol};
 use crate::symbol::{DefRefPair, RangeWrapper, Symbol, SymbolKind};
 use indicatif::ProgressBar;
 use pyo3::{pyclass, pymethods};
@@ -13,6 +13,98 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+
+fn knee_cutoff_score(desc_scores: &[usize]) -> usize {
+    if desc_scores.is_empty() {
+        return 0;
+    }
+    if desc_scores.len() <= 2 {
+        return *desc_scores.last().unwrap_or(&desc_scores[0]);
+    }
+    let top = desc_scores[0] as f64;
+    if top <= 0.0 {
+        return desc_scores[0];
+    }
+    let n = desc_scores.len();
+    let y_last = (desc_scores[n - 1] as f64) / top;
+    let mut best_i = 0usize;
+    let mut best_dist = f64::NEG_INFINITY;
+    for i in 0..n {
+        let x = i as f64 / (n as f64 - 1.0);
+        let y = (desc_scores[i] as f64) / top;
+        let y_line = 1.0 + (y_last - 1.0) * x;
+        let dist = y_line - y;
+        if dist > best_dist {
+            best_dist = dist;
+            best_i = i;
+        }
+    }
+    desc_scores[best_i]
+}
+
+fn max_drop_cutoff_score(desc_scores: &[usize]) -> usize {
+    if desc_scores.is_empty() {
+        return 0;
+    }
+    if desc_scores.len() == 1 {
+        return desc_scores[0];
+    }
+    let mut best_i = 1usize;
+    let mut best_drop = f64::NEG_INFINITY;
+    for i in 1..desc_scores.len() {
+        let prev = desc_scores[i - 1] as f64;
+        let cur = desc_scores[i] as f64;
+        if prev <= 0.0 {
+            continue;
+        }
+        let drop = (prev - cur) / prev;
+        if drop > best_drop {
+            best_drop = drop;
+            best_i = i;
+        }
+    }
+    desc_scores[best_i - 1]
+}
+
+fn filter_related_files(mut contexts: Vec<RelatedFileContext>, conf: &GraphConfig) -> Vec<RelatedFileContext> {
+    // Keep behavior opt-out.
+    if conf.file_min_links == 0 && conf.file_max_links == 0 {
+        return contexts;
+    }
+
+    // Ensure sorted by score desc.
+    contexts.sort_by_key(|c| Reverse(c.score));
+    contexts.retain(|c| c.score > 0);
+    if contexts.is_empty() {
+        return contexts;
+    }
+
+    let scores_desc: Vec<usize> = contexts.iter().map(|c| c.score).collect();
+    // Use unique score levels for cutoff computation.
+    let mut uniq_scores_desc = scores_desc.clone();
+    uniq_scores_desc.sort_by(|a, b| b.cmp(a));
+    uniq_scores_desc.dedup();
+    let cutoff = std::cmp::max(knee_cutoff_score(&uniq_scores_desc), max_drop_cutoff_score(&uniq_scores_desc));
+
+    let mut kept: Vec<RelatedFileContext> = contexts
+        .iter()
+        .cloned()
+        .filter(|c| c.score >= cutoff)
+        .collect();
+
+    // Ensure minimum density.
+    let min_keep = conf.file_min_links;
+    if min_keep > 0 && kept.len() < min_keep {
+        kept = contexts.iter().take(min_keep).cloned().collect();
+    }
+
+    // Apply max cap.
+    let max_keep = conf.file_max_links;
+    if max_keep > 0 && kept.len() > max_keep {
+        kept.truncate(max_keep);
+    }
+    kept
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 #[pyclass]
@@ -90,6 +182,9 @@ pub struct FileRelation {
 
     #[pyo3(get)]
     symbols: Vec<usize>,
+
+    #[pyo3(get)]
+    pub score: usize,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -200,7 +295,7 @@ impl Graph {
             })
             .collect::<Vec<_>>();
         contexts.sort_by_key(|context| Reverse(context.score));
-        contexts
+        filter_related_files(contexts, &self.config)
     }
 
     pub fn related_symbols(&self, symbol: Symbol) -> HashMap<Symbol, usize> {
@@ -337,6 +432,7 @@ impl Graph {
                         src: src_id,
                         dst: dst_id,
                         symbols,
+                        score: related_file.score,
                     });
                     cur_id += 1;
                 }

@@ -18,6 +18,8 @@ struct UnifiedRelation {
     src_file: String,
     dst_file: String,
     symbol_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    score: Option<u64>,
 }
 
 #[derive(Serialize, Debug, PartialEq, Eq, Hash, Clone)]
@@ -75,6 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             src_file: doc.relative_path.clone(),
                             dst_file: def_file.clone(),
                             symbol_name: occ.symbol.clone(),
+                            score: None,
                         });
                         scip_file_links.insert(UnifiedFileLink {
                             src_file: doc.relative_path.clone(),
@@ -114,6 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if v["kind"] == "FileRelation" {
             let src_file = id_to_file.get(&v["src"].as_u64().unwrap()).cloned().unwrap_or_default();
             let dst_file = id_to_file.get(&v["dst"].as_u64().unwrap()).cloned().unwrap_or_default();
+            let score = v["score"].as_u64();
             
             // Always capture the file link
             gossiphs_file_links.insert(UnifiedFileLink {
@@ -129,6 +133,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         src_file: src_file.clone(),
                         dst_file: dst_file.clone(),
                         symbol_name: s_name.clone(),
+                        score,
                     });
                     
                     gossiphs_symbols.insert(UnifiedSymbol {

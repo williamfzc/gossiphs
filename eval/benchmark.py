@@ -37,27 +37,30 @@ def evaluate(repo_path, output_tag):
 
     # Step 1: Run Indexers
     print(f">>> [{output_tag}] Running Indexers...")
-    has_scip = False
+    # Reuse existing SCIP index if present to save time.
+    has_scip = os.path.exists(scip_file) and os.path.getsize(scip_file) > 0
+    if has_scip:
+        print(f"  Reusing existing SCIP index: {scip_file}")
     
     # 1.1 Rust
-    if os.path.exists(os.path.join(repo_path, "Cargo.toml")):
+    if not has_scip and os.path.exists(os.path.join(repo_path, "Cargo.toml")):
         if run_cmd(f"rust-analyzer scip {repo_path} --output {scip_file}"):
             has_scip = True
     
     # 1.2 TypeScript / JavaScript
-    elif os.path.exists(os.path.join(repo_path, "package.json")):
+    elif not has_scip and os.path.exists(os.path.join(repo_path, "package.json")):
         if run_cmd(f"scip-typescript index {repo_path} --output {scip_file}"):
             has_scip = True
 
     # 1.3 Java / Kotlin
-    elif os.path.exists(os.path.join(repo_path, "build.gradle")) or \
+    elif not has_scip and (os.path.exists(os.path.join(repo_path, "build.gradle")) or \
          os.path.exists(os.path.join(repo_path, "build.gradle.kts")) or \
-         os.path.exists(os.path.join(repo_path, "pom.xml")):
+         os.path.exists(os.path.join(repo_path, "pom.xml"))):
         if run_cmd(f"scip-java index --output {scip_file}", cwd=repo_path):
             has_scip = True
             
     # 1.4 Go
-    elif os.path.exists(os.path.join(repo_path, "go.mod")):
+    elif not has_scip and os.path.exists(os.path.join(repo_path, "go.mod")):
         scip_go_bin = "scip-go"
         gopath_res = subprocess.run("go env GOPATH", shell=True, capture_output=True, text=True)
         gopath = gopath_res.stdout.strip() if gopath_res.returncode == 0 else ""
