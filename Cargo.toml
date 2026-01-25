@@ -1,6 +1,6 @@
 [package]
 name = "gossiphs"
-version = "0.12.0"
+version = "0.12.1"
 edition = "2021"
 description = "A Rust lib for general code file relationship analysis. Based on tree-sitter and git analysis."
 license = "Apache-2.0"
@@ -47,6 +47,10 @@ protobuf = "3.7.2"
 
 [build-dependencies]
 cc = "1.0.94"
+
+# Fix Windows MSVC linking error with jobserver crate
+# SystemFunction036 symbol not found in older versions (<= 0.1.33)
+jobserver = ">=0.1.34"
 
 [lib]
 name = "gossiphs"
