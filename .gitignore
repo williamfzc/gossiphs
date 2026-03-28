@@ -35,4 +35,4 @@ eval/aligned_*.json
 .trae/
 
 # Binaries
-gossiphs
+/gossiphs

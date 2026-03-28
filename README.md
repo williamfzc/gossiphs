@@ -1,16 +1,14 @@
 # Gossiphs = Gossip Graphs
 
 > [!TIP]
-> We provide an easy-to-use Python SDK and support for MCP (Model Context Protocol), allowing you to seamlessly
-> integrate it with your AI.
+> **AI-ready**: Use the [gossiphs skill](./skills/gossiphs/SKILL.md) to analyze code relationships in any AI assistant.
 >
-> See [Gossiphs MCP Server](./mcp/README.md)
+> Also available: [Python SDK](./py_wrapper/) and [MCP Server](./mcp/README.md)
 
 ![Crates.io Version](https://img.shields.io/crates/v/gossiphs)
 [![RealWorld Test](https://github.com/williamfzc/gossiphs/actions/workflows/cargo-test.yml/badge.svg)](https://github.com/williamfzc/gossiphs/actions/workflows/cargo-test.yml)
 
-"Zero setup" & "Blazingly fast" general code file relationship analysis. With Python & Rust. Based on tree-sitter and
-git analysis. Support MCP and ready for AI🤖
+"Zero setup" & "Blazingly fast" code file relationship analysis. Based on tree-sitter and git history.
 
 ## What's it
 
