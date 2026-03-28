@@ -55,3 +55,51 @@ The pipeline combines two main signal sources:
 2. **Static Signals (Tree-sitter)**: Extracts "Physical Dependencies" through explicit imports and symbol definitions.
 
 These are merged into a unified graph where physical links serve as ground truth (high weight) and logical links provide architectural context.
+
+## 7. Claude Code Skill
+
+This repository includes a Claude Code skill for AI-assisted code navigation.
+
+### Location
+
+```
+skills/gossiphs/SKILL.md
+```
+
+### Installation
+
+To use this skill with Claude Code, create a symbolic link:
+
+```bash
+ln -s $(pwd)/skills/gossiphs ~/.claude/skills/gossiphs
+```
+
+Or copy the skill directory:
+
+```bash
+cp -r skills/gossiphs ~/.claude/skills/
+```
+
+### What It Does
+
+The skill helps Claude Code agents:
+- Find files related to a specific file
+- Analyze impact scope of code changes
+- Discover dependencies between modules
+- Trace symbol definitions and references
+
+### Trigger Phrases
+
+The skill activates when users ask:
+- "Which files use this function/class?"
+- "What files will be affected if I change this?"
+- "Find code related to X"
+- "What does this file depend on?"
+
+### Requirements
+
+Requires `gossiphs` binary. Install with:
+
+```bash
+cargo install gossiphs
+```
